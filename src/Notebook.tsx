@@ -1,4 +1,5 @@
 import {
+  Route,
   ArrowUpRight,
   Play,
   Database,
@@ -155,7 +156,9 @@ export default function Notebook({
             ))}
         </div>
         <div className="process-heading">
-          <h2>分析过程</h2>
+          <h2>
+            <Route size={14} /> 分析路径
+          </h2>
           <span>{run.nodes.filter((n) => n.kind === 'reason').length} 轮</span>
         </div>
         {run.nodes
@@ -325,7 +328,9 @@ export default function Notebook({
                         className="step-name"
                         onClick={() => onSelect(node.id)}
                       >
-                        <Icon size={16} />
+                        <span className="step-icon">
+                          <Icon size={16} />
+                        </span>
                         <strong>{node.title}</strong>
                       </button>
                       <div className="step-tools">

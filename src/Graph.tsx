@@ -82,9 +82,9 @@ const Card = memo(
             data.onSelect(node.id);
           }
         }}
-        className={`evidence-node ${selected ? 'selected' : ''} state-${
-          node.status
-        }`}
+        className={`evidence-node kind-${node.kind} ${
+          selected ? 'selected' : ''
+        } state-${node.status}`}
       >
         <Handle type="target" position={Position.Top} />
         <div className="node-eyebrow">
@@ -179,7 +179,7 @@ export default function Graph({
         target: n.id,
         type: 'smoothstep',
         markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14 },
-        style: { stroke: '#b7bcc5', strokeWidth: 1.3 },
+        style: { stroke: '#b8c6bc', strokeWidth: 1.3 },
       })),
   );
   return (
@@ -204,7 +204,7 @@ export default function Graph({
       minZoom={0.2}
       maxZoom={1.5}
     >
-      <Background color="#d8dce2" gap={22} size={1} />
+      <Background color="#dce1da" gap={22} size={1} />
       <Controls showInteractive={false} position="bottom-left" />
     </ReactFlow>
   );

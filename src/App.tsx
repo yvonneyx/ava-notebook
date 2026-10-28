@@ -1,4 +1,13 @@
-import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import {
+  lazy,
+  Suspense,
+  ViewTransition,
+  startTransition,
+  addTransitionType,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 import {
   Plus,
   ArrowUp,
@@ -24,6 +33,9 @@ import {
   BookOpen,
   Search,
   ChevronRight,
+  NotebookPen,
+  Feather,
+  Table2,
 } from 'lucide-react';
 import { api, post } from './api';
 import type { Run, Source, Mode, Session, Evidence } from './types';
@@ -81,12 +93,15 @@ export default function App() {
   }
   async function openRun(id: string) {
     const next = await api<Run>(`/runs/${id}`);
-    setRun(next);
-    setDrafts({});
-    setView('notebook');
-    setSidebarOpen(false);
-    setSelected('');
-    setCollapsed(new Set());
+    startTransition(() => {
+      addTransitionType(run ? 'switch-run' : 'nav-forward');
+      setRun(next);
+      setDrafts({});
+      setView('notebook');
+      setSidebarOpen(false);
+      setSelected('');
+      setCollapsed(new Set());
+    });
     history.replaceState(null, '', `?run=${id}`);
   }
   async function act(fn: () => Promise<void>) {
@@ -160,18 +175,21 @@ export default function App() {
         'X-Filename': encodeURIComponent(file.name),
       },
     });
-    setSource(uploaded);
+    startTransition(() => setSource(uploaded));
   }
   function newAnalysis() {
-    setRun(null);
-    setSource(null);
-    setQuestion('');
-    setSelected('');
-    setDrafts({});
-    setSidebarOpen(false);
-    setView('notebook');
-    setError('');
-    history.replaceState(null, '', '/');
+    startTransition(() => {
+      addTransitionType('nav-back');
+      setRun(null);
+      setSource(null);
+      setQuestion('');
+      setSelected('');
+      setDrafts({});
+      setSidebarOpen(false);
+      setView('notebook');
+      setError('');
+      history.replaceState(null, '', '/');
+    });
   }
   function editNode(id: string, value: { sql?: string; instruction?: string }) {
     setDrafts((current) => ({
@@ -203,7 +221,7 @@ export default function App() {
   const active = isActive(run);
   const node = run?.nodes.find((n) => n.id === selected);
   function selectNode(id: string) {
-    setSelected(id);
+    startTransition(() => setSelected(id));
   }
   async function control(
     command: string,
@@ -236,12 +254,15 @@ export default function App() {
       requestId: crypto.randomUUID(),
       ...decisionFor(nodeId, decision),
     });
-    setRun(next);
-    setDrafts({});
-    setView('notebook');
-    setSidebarOpen(false);
-    setSelected('');
-    setCollapsed(new Set());
+    startTransition(() => {
+      addTransitionType('switch-run');
+      setRun(next);
+      setDrafts({});
+      setView('notebook');
+      setSidebarOpen(false);
+      setSelected('');
+      setCollapsed(new Set());
+    });
     history.replaceState(null, '', `?run=${next.id}`);
     await refreshRuns();
   }
@@ -264,7 +285,11 @@ export default function App() {
           onClick={() => setSidebarOpen(false)}
         />
       )}
-      <aside className="sidebar" ref={sidebar}>
+      <aside
+        className="sidebar"
+        ref={sidebar}
+        style={{ viewTransitionName: 'persistent-sidebar' }}
+      >
         <a
           className="brand"
           href="/"
@@ -273,7 +298,9 @@ export default function App() {
             newAnalysis();
           }}
         >
-          <span className="brand-symbol">A</span>
+          <span className="brand-symbol">
+            <NotebookPen size={20} strokeWidth={1.8} />
+          </span>
           <strong>
             ava<span>notebook</span>
           </strong>
@@ -287,6 +314,7 @@ export default function App() {
         >
           <Plus size={16} />
           <span>新建分析</span>
+          <ArrowUp size={14} className="new-analysis-arrow" />
         </button>
         <div className="sidebar-label">
           最近分析 <span>{runs.length}</span>
@@ -345,7 +373,10 @@ export default function App() {
         </div>
       </aside>
       <main className="main" inert={sidebarOpen}>
-        <header className="topbar">
+        <header
+          className="topbar"
+          style={{ viewTransitionName: 'persistent-topbar' }}
+        >
           <div>
             <button
               className="icon-button sidebar-toggle"
@@ -355,12 +386,13 @@ export default function App() {
             >
               <PanelLeft size={18} />
             </button>
-            <span>工作空间</span>
+            <BookOpen size={15} className="workspace-icon" />
+            <span>我的工作空间</span>
             <ChevronRight size={13} />
-            <strong>{run ? '分析记录' : '概览'}</strong>
+            <strong>{run ? '分析记录' : '新建分析'}</strong>
           </div>
           <span className="topbar-note">
-            <span className="connection-dot ok" /> 本地工作空间
+            <span className="connection-dot ok" /> 本地运行
           </span>
         </header>
         {error && (
@@ -375,461 +407,549 @@ export default function App() {
             </button>
           </div>
         )}
-        {!run ? (
-          <div className="home">
-            <div className="home-content">
-              <div className="home-heading">
-                <div>
-                  <span className="page-kicker">NOTEBOOK</span>
-                  <h1>新建分析</h1>
+        <ViewTransition
+          key={run?.id || 'home'}
+          default="none"
+          enter={{
+            'nav-forward': 'nav-forward',
+            'nav-back': 'nav-back',
+            default: 'fade-in',
+          }}
+          exit={{
+            'nav-forward': 'nav-forward',
+            'nav-back': 'nav-back',
+            default: 'fade-out',
+          }}
+        >
+          {!run ? (
+            <div className="home">
+              <div className="home-content">
+                <div className="home-heading">
+                  <div>
+                    <span className="page-kicker">
+                      <Feather size={14} /> 留一点空间，给新的发现
+                    </span>
+                    <h1>今天，想探索什么？</h1>
+                  </div>
+                  <div className="notebook-emblem" aria-hidden="true">
+                    <span className="emblem-sheet">
+                      <Table2 size={23} strokeWidth={1.4} />
+                    </span>
+                    <span className="emblem-cover">
+                      <NotebookPen size={29} strokeWidth={1.5} />
+                    </span>
+                    <span className="emblem-check">
+                      <Check size={13} strokeWidth={2.5} />
+                    </span>
+                  </div>
                 </div>
-                <span className="file-type-tag">
-                  <FileSpreadsheet size={14} /> CSV
-                </span>
-              </div>
-              <div className="compose-card">
-                <section className="source-section" aria-label="导入数据">
-                  <div className="section-heading">
-                    <span className="section-number">01</span>
-                    <h2>数据源</h2>
-                  </div>
-                  <div
-                    className={`upload-area ${source ? 'has-source' : ''} ${
-                      dragging ? 'dragging' : ''
-                    }`}
-                    onDragOver={(e) => {
-                      e.preventDefault();
-                      if (!busy) setDragging(true);
-                    }}
-                    onDragLeave={(e) => {
-                      if (!e.currentTarget.contains(e.relatedTarget as Node))
-                        setDragging(false);
-                    }}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      setDragging(false);
-                      const file = e.dataTransfer.files[0];
-                      if (file && !busy) void act(() => upload(file));
-                    }}
-                  >
-                    <div className="file-icon">
-                      <FileSpreadsheet size={23} />
+                <div className="compose-card">
+                  <section className="source-section" aria-label="导入数据">
+                    <div className="section-heading">
+                      <span className="section-number">
+                        <FileSpreadsheet size={14} />
+                      </span>
+                      <h2>添加数据</h2>
+                      <span className="section-aside">CSV · 最大 10 MB</span>
                     </div>
-                    <div className="file-info">
-                      <strong>{source ? source.name : '拖入 CSV 文件'}</strong>
-                      <p>
-                        {source
-                          ? `${source.rows.toLocaleString()} 行 · ${
-                              source.headers.length
-                            } 个字段 · ${(source.bytes / 1024).toFixed(1)} KB`
-                          : 'UTF-8 · 最大 10 MB'}
-                      </p>
-                    </div>
-                    <button
-                      className="button secondary"
-                      disabled={busy}
-                      onClick={() => fileInput.current?.click()}
-                    >
-                      {source ? '更换文件' : '选择文件'}
-                      <Upload size={14} />
-                    </button>
-                    <input
-                      ref={fileInput}
-                      type="file"
-                      accept=".csv,text/csv"
-                      hidden
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) void act(() => upload(file));
-                        e.target.value = '';
-                      }}
-                    />
-                  </div>
-                  {source ? (
-                    <details className="source-preview" key={source.id}>
-                      <summary>
-                        预览数据
-                        <span>
-                          {source.headers.slice(0, 4).join(' · ')}
-                          {source.headers.length > 4 ? ' …' : ''}
-                        </span>
-                      </summary>
-                      <DataTable rows={source.preview} />
-                    </details>
-                  ) : (
-                    <button
-                      className="sample-button"
-                      disabled={busy}
-                      onClick={() =>
-                        void act(async () => {
-                          const response = await fetch('/sales.csv');
-                          if (!response.ok) throw new Error('示例文件加载失败');
-                          await upload(
-                            new File([await response.blob()], 'sales.csv', {
-                              type: 'text/csv',
-                            }),
-                          );
-                          setQuestion(
-                            '对比 2025 年 1 月和 2 月的销售额，找出下降最多的产品。',
-                          );
-                        })
-                      }
-                    >
-                      <Database size={14} />
-                      使用销售示例数据
-                      <ArrowRight size={14} />
-                    </button>
-                  )}
-                </section>
-                <section className="question-section" aria-label="提出问题">
-                  <div className="section-heading">
-                    <span className="section-number">02</span>
-                    <h2>分析问题</h2>
-                    <kbd>⌘ / Ctrl ↵</kbd>
-                  </div>
-                  <textarea
-                    className="question-input"
-                    aria-label="分析问题"
-                    value={question}
-                    onChange={(e) => setQuestion(e.target.value)}
-                    placeholder="例如：销售额为什么下降？主要受哪些产品影响？"
-                    maxLength={8000}
-                    onKeyDown={(e) => {
-                      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter')
-                        document.getElementById('start-analysis')?.click();
-                    }}
-                  />
-                  <div className="compose-footer">
-                    <div className="compose-options">
-                      <button
-                        className="composer-model"
-                        onClick={() => setSettings(true)}
+                    <ViewTransition default="none" update="morph">
+                      <div
+                        className={`upload-area ${source ? 'has-source' : ''} ${
+                          dragging ? 'dragging' : ''
+                        }`}
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          if (!busy) setDragging(true);
+                        }}
+                        onDragLeave={(e) => {
+                          if (
+                            !e.currentTarget.contains(e.relatedTarget as Node)
+                          )
+                            setDragging(false);
+                        }}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          setDragging(false);
+                          const file = e.dataTransfer.files[0];
+                          if (file && !busy) void act(() => upload(file));
+                        }}
                       >
-                        <span
-                          className={`connection-dot ${
-                            session?.configured ? 'ok' : ''
-                          }`}
-                        />
-                        {session?.configured ? session.model : '配置模型'}
-                        <ChevronDown size={12} />
-                      </button>
-                      <span className="option-divider" />
-                      <label className="mode-picker">
-                        <select
-                          aria-label="执行方式"
-                          value={mode}
-                          onChange={(e) => setMode(e.target.value as Mode)}
+                        <div className="file-icon">
+                          <FileSpreadsheet size={25} strokeWidth={1.6} />
+                          {source && (
+                            <span className="file-ready">
+                              <Check size={10} strokeWidth={3} />
+                            </span>
+                          )}
+                        </div>
+                        <div className="file-info">
+                          <strong>
+                            {source
+                              ? source.name
+                              : dragging
+                              ? '松开，放在这里'
+                              : '把数据放在这里'}
+                          </strong>
+                          <p>
+                            {source
+                              ? `${source.rows.toLocaleString()} 行 · ${
+                                  source.headers.length
+                                } 个字段 · ${(source.bytes / 1024).toFixed(
+                                  1,
+                                )} KB`
+                              : '拖入 CSV，或选择本地文件'}
+                          </p>
+                        </div>
+                        <button
+                          className="button secondary"
+                          disabled={busy}
+                          onClick={() => fileInput.current?.click()}
                         >
-                          {modeOptions}
-                        </select>
-                        <ChevronDown size={12} />
-                      </label>
-                    </div>
-                    <button
-                      id="start-analysis"
-                      className="button primary"
-                      disabled={busy || !source || !question.trim()}
-                      onClick={() => {
-                        if (!session?.configured) {
-                          setSettings(true);
-                          return;
-                        }
-                        void act(async () => {
-                          const next = await post<Run>('/runs', {
-                            sourceId: source!.id,
-                            question,
-                            mode,
-                            requestId: crypto.randomUUID(),
-                          });
-                          setRun(next);
-                          setDrafts({});
-                          setView('notebook');
-                          setSelected('');
-                          history.replaceState(null, '', `?run=${next.id}`);
-                          await refreshRuns();
-                        });
-                      }}
-                    >
-                      {busy ? (
-                        <LoaderCircle size={15} className="spin" />
-                      ) : (
-                        <ArrowUp size={16} />
-                      )}
-                      开始分析
-                    </button>
-                  </div>
-                </section>
-              </div>
-              <p className="privacy-note">
-                <ShieldCheck size={13} />
-                记录保存在本机，分析上下文发送至所选模型。
-              </p>
-              {runs.length > 0 && (
-                <section className="recent-section">
-                  <div className="recent-heading">
-                    <h2>最近分析</h2>
-                    <span>{runs.length} 份记录</span>
-                  </div>
-                  {runs.slice(0, 3).map((item) => (
-                    <button
-                      key={item.id}
-                      className="recent-item"
-                      onClick={() => void act(() => openRun(item.id))}
-                    >
-                      <span className="recent-icon">
-                        <BookOpen size={17} />
-                      </span>
-                      <span className="recent-title">
-                        <strong>{item.question}</strong>
-                        <small>{item.source.name}</small>
-                      </span>
-                      <span className={`status status-${item.status}`}>
-                        {statusLabels[item.status]}
-                      </span>
-                      <ArrowRight size={15} />
-                    </button>
-                  ))}
-                </section>
-              )}
-            </div>
-          </div>
-        ) : (
-          <div className="workspace">
-            <div className="task-header">
-              <div>
-                <div className="task-eyebrow">
-                  <span className={`status status-${run.status}`}>
-                    {statusLabels[run.status]}
-                  </span>
-                  {run.parentId && (
-                    <button
-                      className="text-button"
-                      onClick={() => void act(() => openRun(run.parentId!))}
-                    >
-                      <GitBranch size={12} />
-                      查看原分支
-                    </button>
-                  )}
-                  <span className="task-source">
-                    <FileSpreadsheet size={13} />
-                    {run.source.name}
-                  </span>
-                </div>
-                <h1 title={run.question}>{run.question}</h1>
-                <div className="task-meta">
-                  <span>{run.nodes.length} 个步骤</span>
-                  <span>
-                    {run.nodes.filter((n) => n.kind === 'reason').length} 轮分析
-                  </span>
-                  <span>{run.model}</span>
-                  {!connected && (
-                    <span className="amber">连接已断开，正在恢复…</span>
-                  )}
-                </div>
-              </div>
-              <a
-                aria-label="导出证据"
-                className="button secondary export-button"
-                href={`/api/runs/${run.id}/export`}
-              >
-                <Download size={14} />
-                导出
-              </a>
-            </div>
-            {run.error && (
-              <div className="run-error notice error-notice">
-                {run.error}
-                <button
-                  className="text-button"
-                  onClick={() => {
-                    setSource(run.source);
-                    setQuestion(run.question);
-                    setRun(null);
-                    history.replaceState(null, '', '/');
-                  }}
-                >
-                  使用此数据重新分析 ↗
-                </button>
-              </div>
-            )}
-            <div className="workspace-toolbar">
-              <div className="segmented">
-                <button
-                  aria-pressed={view === 'notebook'}
-                  className={view === 'notebook' ? 'active' : ''}
-                  onClick={() => setView('notebook')}
-                >
-                  <List size={14} />
-                  Notebook
-                </button>
-                <button
-                  aria-pressed={view === 'graph'}
-                  className={view === 'graph' ? 'active' : ''}
-                  onClick={() => setView('graph')}
-                >
-                  <Network size={14} />
-                  图谱
-                </button>
-              </div>
-              <div className="run-controls">
-                {active && (
-                  <>
-                    <select
-                      aria-label="运行控制模式"
-                      value={run.mode}
-                      disabled={busy}
-                      onChange={(e) =>
-                        void act(() =>
-                          control('mode', {}, e.target.value as Mode),
-                        )
-                      }
-                    >
-                      {modeOptions}
-                    </select>
-                    {run.status === 'paused' ? (
-                      <button
-                        className="button primary small"
-                        disabled={
-                          busy ||
-                          drafts[run.activeNodeId || '']?.sql?.trim() === ''
-                        }
-                        onClick={() => void act(() => control('continue'))}
-                      >
-                        <Play size={13} />
-                        继续
-                      </button>
+                          {source ? '更换文件' : '选择文件'}
+                          <Upload size={14} />
+                        </button>
+                        <input
+                          ref={fileInput}
+                          type="file"
+                          accept=".csv,text/csv"
+                          hidden
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) void act(() => upload(file));
+                            e.target.value = '';
+                          }}
+                        />
+                      </div>
+                    </ViewTransition>
+                    {source ? (
+                      <details className="source-preview" key={source.id}>
+                        <summary>
+                          预览数据
+                          <span>
+                            {source.headers.slice(0, 4).join(' · ')}
+                            {source.headers.length > 4 ? ' …' : ''}
+                          </span>
+                        </summary>
+                        <DataTable rows={source.preview} />
+                      </details>
                     ) : (
                       <button
-                        className="button secondary small"
-                        disabled={busy || run.status === 'pausing'}
-                        onClick={() => void act(() => control('pause'))}
-                      >
-                        <Pause size={13} />
-                        暂停
-                      </button>
-                    )}
-                    <button
-                      className="icon-button stop-button"
-                      disabled={busy}
-                      title="停止分析"
-                      aria-label="停止分析"
-                      onClick={() => void act(() => control('stop'))}
-                    >
-                      <Square size={13} />
-                    </button>
-                  </>
-                )}
-                {run.nodes.some((n) => n.id === 'conclusion') && !active ? (
-                  <button
-                    className="text-button jump-button"
-                    onClick={() => jumpToStep('conclusion')}
-                  >
-                    查看结论
-                    <ArrowDown size={14} />
-                  </button>
-                ) : (
-                  run.activeNodeId && (
-                    <button
-                      className="icon-button"
-                      title="定位当前步骤"
-                      aria-label="定位当前步骤"
-                      onClick={() => jumpToStep(run.activeNodeId!)}
-                    >
-                      <ArrowDown size={15} />
-                    </button>
-                  )
-                )}
-              </div>
-            </div>
-            <div className="work-body">
-              <div className="work-canvas">
-                {view === 'notebook' ? (
-                  <Notebook
-                    key={run.id}
-                    run={run}
-                    drafts={drafts}
-                    onEdit={editNode}
-                    busy={busy}
-                    selected={selected}
-                    onSelect={selectNode}
-                    onContinue={(sql) =>
-                      void act(() => control('continue', sql ? { sql } : {}))
-                    }
-                    onFork={(id) => void act(() => forkRun(id))}
-                  />
-                ) : (
-                  <Suspense
-                    fallback={
-                      <div className="loading">
-                        <LoaderCircle className="spin" />
-                        加载证据图谱…
-                      </div>
-                    }
-                  >
-                    <Graph
-                      key={run.id}
-                      nodes={run.nodes}
-                      selected={selected}
-                      onSelect={selectNode}
-                      collapsed={collapsed}
-                    />
-                    {node?.kind === 'reason' && node.step !== undefined && (
-                      <button
-                        className="graph-collapse button secondary"
+                        className="sample-button"
+                        disabled={busy}
                         onClick={() =>
-                          setCollapsed((current) => {
-                            const next = new Set(current);
-                            if (next.has(node.step!)) next.delete(node.step!);
-                            else next.add(node.step!);
-                            return next;
+                          void act(async () => {
+                            const response = await fetch('/sales.csv');
+                            if (!response.ok)
+                              throw new Error('示例文件加载失败');
+                            await upload(
+                              new File([await response.blob()], 'sales.csv', {
+                                type: 'text/csv',
+                              }),
+                            );
+                            setQuestion(
+                              '对比 2025 年 1 月和 2 月的销售额，找出下降最多的产品。',
+                            );
                           })
                         }
                       >
-                        {collapsed.has(node.step)
-                          ? '展开本轮查询'
-                          : '折叠本轮查询'}
+                        <Database size={14} />
+                        使用销售示例数据
+                        <ArrowRight size={14} />
                       </button>
                     )}
-                  </Suspense>
+                  </section>
+                  <section className="question-section" aria-label="提出问题">
+                    <div className="section-heading">
+                      <span className="section-number">
+                        <Feather size={14} />
+                      </span>
+                      <h2>想了解什么？</h2>
+                      <kbd>⌘ / Ctrl ↵</kbd>
+                    </div>
+                    <textarea
+                      className="question-input"
+                      aria-label="分析问题"
+                      value={question}
+                      onChange={(e) => setQuestion(e.target.value)}
+                      placeholder="例如：销售额为什么下降？主要受哪些产品影响？"
+                      maxLength={8000}
+                      onKeyDown={(e) => {
+                        if ((e.metaKey || e.ctrlKey) && e.key === 'Enter')
+                          document.getElementById('start-analysis')?.click();
+                      }}
+                    />
+                    <div className="compose-footer">
+                      <div className="compose-options">
+                        <button
+                          className="composer-model"
+                          onClick={() => setSettings(true)}
+                        >
+                          <span
+                            className={`connection-dot ${
+                              session?.configured ? 'ok' : ''
+                            }`}
+                          />
+                          {session?.configured ? session.model : '配置模型'}
+                          <ChevronDown size={12} />
+                        </button>
+                        <span className="option-divider" />
+                        <label className="mode-picker">
+                          <select
+                            aria-label="执行方式"
+                            value={mode}
+                            onChange={(e) => setMode(e.target.value as Mode)}
+                          >
+                            {modeOptions}
+                          </select>
+                          <ChevronDown size={12} />
+                        </label>
+                      </div>
+                      <button
+                        id="start-analysis"
+                        className="button primary"
+                        disabled={busy || !source || !question.trim()}
+                        onClick={() => {
+                          if (!session?.configured) {
+                            setSettings(true);
+                            return;
+                          }
+                          void act(async () => {
+                            const next = await post<Run>('/runs', {
+                              sourceId: source!.id,
+                              question,
+                              mode,
+                              requestId: crypto.randomUUID(),
+                            });
+                            startTransition(() => {
+                              addTransitionType('nav-forward');
+                              setRun(next);
+                              setDrafts({});
+                              setView('notebook');
+                              setSelected('');
+                            });
+                            history.replaceState(null, '', `?run=${next.id}`);
+                            await refreshRuns();
+                          });
+                        }}
+                      >
+                        {busy ? (
+                          <LoaderCircle size={15} className="spin" />
+                        ) : null}
+                        开始分析
+                        {!busy && <ArrowUp size={16} />}
+                      </button>
+                    </div>
+                  </section>
+                </div>
+                <p className="privacy-note">
+                  <ShieldCheck size={13} />
+                  记录保存在本机，分析上下文发送至所选模型。
+                </p>
+                {runs.length > 0 && (
+                  <section className="recent-section">
+                    <div className="recent-heading">
+                      <h2>最近分析</h2>
+                      <span>{runs.length} 份记录</span>
+                    </div>
+                    <div className="recent-grid">
+                      {runs.slice(0, 3).map((item) => (
+                        <button
+                          key={item.id}
+                          className="recent-item"
+                          onClick={() => void act(() => openRun(item.id))}
+                        >
+                          <span className="recent-icon">
+                            <BookOpen size={17} />
+                          </span>
+                          <span className="recent-title">
+                            <ViewTransition
+                              name={`run-title-${item.id}`}
+                              share="text-morph"
+                              default="none"
+                            >
+                              <strong>{item.question}</strong>
+                            </ViewTransition>
+                            <small>{item.source.name}</small>
+                          </span>
+                          <span className={`status status-${item.status}`}>
+                            {statusLabels[item.status]}
+                          </span>
+                          <ArrowRight size={15} />
+                        </button>
+                      ))}
+                    </div>
+                  </section>
                 )}
               </div>
-              {node && (
-                <Detail
-                  key={`${run.id}-${node.id}`}
-                  node={node}
-                  draft={drafts[node.id] || {}}
-                  onEdit={(value) => editNode(node.id, value)}
-                  run={run}
-                  busy={busy}
-                  onClose={() => setSelected('')}
-                  onSelect={selectNode}
-                  onContinue={(decision, nextMode) =>
-                    void act(() => control('continue', decision, nextMode))
-                  }
-                  onFork={(id, decision) =>
-                    void act(() => forkRun(id, decision))
-                  }
-                  onChart={(nodeId, x, y) =>
-                    void act(async () => {
-                      const next = await post<Run>(`/runs/${run.id}/charts`, {
-                        nodeId,
-                        x,
-                        y,
-                      });
-                      setRun((current) =>
-                        current?.id === next.id &&
-                        current.revision > next.revision
-                          ? current
-                          : next,
-                      );
-                      setSelected(next.nodes.at(-1)!.id);
-                    })
-                  }
-                />
-              )}
             </div>
-          </div>
-        )}
+          ) : (
+            <div className="workspace">
+              <div className="task-header">
+                <div>
+                  <div className="task-eyebrow">
+                    <span className={`status status-${run.status}`}>
+                      {statusLabels[run.status]}
+                    </span>
+                    {run.parentId && (
+                      <button
+                        className="text-button"
+                        onClick={() => void act(() => openRun(run.parentId!))}
+                      >
+                        <GitBranch size={12} />
+                        查看原分支
+                      </button>
+                    )}
+                    <span className="task-source">
+                      <FileSpreadsheet size={13} />
+                      {run.source.name}
+                    </span>
+                  </div>
+                  <ViewTransition
+                    name={`run-title-${run.id}`}
+                    share="text-morph"
+                    default="none"
+                  >
+                    <h1 title={run.question}>{run.question}</h1>
+                  </ViewTransition>
+                  <div className="task-meta">
+                    <span>{run.nodes.length} 个步骤</span>
+                    <span>
+                      {run.nodes.filter((n) => n.kind === 'reason').length}{' '}
+                      轮分析
+                    </span>
+                    <span>{run.model}</span>
+                    {!connected && (
+                      <span className="amber">连接已断开，正在恢复…</span>
+                    )}
+                  </div>
+                </div>
+                <a
+                  aria-label="导出证据"
+                  className="button secondary export-button"
+                  href={`/api/runs/${run.id}/export`}
+                >
+                  <Download size={14} />
+                  导出
+                </a>
+              </div>
+              {run.error && (
+                <div className="run-error notice error-notice">
+                  {run.error}
+                  <button
+                    className="text-button"
+                    onClick={() => {
+                      setSource(run.source);
+                      setQuestion(run.question);
+                      setRun(null);
+                      history.replaceState(null, '', '/');
+                    }}
+                  >
+                    使用此数据重新分析 ↗
+                  </button>
+                </div>
+              )}
+              <div className="workspace-toolbar">
+                <div className="segmented" data-view={view}>
+                  <span className="segment-indicator" aria-hidden="true" />
+                  <button
+                    aria-pressed={view === 'notebook'}
+                    className={view === 'notebook' ? 'active' : ''}
+                    onClick={() => startTransition(() => setView('notebook'))}
+                  >
+                    <List size={14} />
+                    Notebook
+                  </button>
+                  <button
+                    aria-pressed={view === 'graph'}
+                    className={view === 'graph' ? 'active' : ''}
+                    onClick={() => startTransition(() => setView('graph'))}
+                  >
+                    <Network size={14} />
+                    图谱
+                  </button>
+                </div>
+                <div className="run-controls">
+                  {active && (
+                    <>
+                      <select
+                        aria-label="运行控制模式"
+                        value={run.mode}
+                        disabled={busy}
+                        onChange={(e) =>
+                          void act(() =>
+                            control('mode', {}, e.target.value as Mode),
+                          )
+                        }
+                      >
+                        {modeOptions}
+                      </select>
+                      {run.status === 'paused' ? (
+                        <button
+                          className="button primary small"
+                          disabled={
+                            busy ||
+                            drafts[run.activeNodeId || '']?.sql?.trim() === ''
+                          }
+                          onClick={() => void act(() => control('continue'))}
+                        >
+                          <Play size={13} />
+                          继续
+                        </button>
+                      ) : (
+                        <button
+                          className="button secondary small"
+                          disabled={busy || run.status === 'pausing'}
+                          onClick={() => void act(() => control('pause'))}
+                        >
+                          <Pause size={13} />
+                          暂停
+                        </button>
+                      )}
+                      <button
+                        className="icon-button stop-button"
+                        disabled={busy}
+                        title="停止分析"
+                        aria-label="停止分析"
+                        onClick={() => void act(() => control('stop'))}
+                      >
+                        <Square size={13} />
+                      </button>
+                    </>
+                  )}
+                  {run.nodes.some((n) => n.id === 'conclusion') && !active ? (
+                    <button
+                      className="text-button jump-button"
+                      onClick={() => jumpToStep('conclusion')}
+                    >
+                      查看结论
+                      <ArrowDown size={14} />
+                    </button>
+                  ) : (
+                    run.activeNodeId && (
+                      <button
+                        className="icon-button"
+                        title="定位当前步骤"
+                        aria-label="定位当前步骤"
+                        onClick={() => jumpToStep(run.activeNodeId!)}
+                      >
+                        <ArrowDown size={15} />
+                      </button>
+                    )
+                  )}
+                </div>
+              </div>
+              <div className="work-body">
+                <div className="work-canvas">
+                  <ViewTransition
+                    key={view}
+                    default="none"
+                    enter="fade-in"
+                    exit="fade-out"
+                  >
+                    {view === 'notebook' ? (
+                      <Notebook
+                        key={run.id}
+                        run={run}
+                        drafts={drafts}
+                        onEdit={editNode}
+                        busy={busy}
+                        selected={selected}
+                        onSelect={selectNode}
+                        onContinue={(sql) =>
+                          void act(() =>
+                            control('continue', sql ? { sql } : {}),
+                          )
+                        }
+                        onFork={(id) => void act(() => forkRun(id))}
+                      />
+                    ) : (
+                      <ViewTransition default="none" update="morph">
+                        <Suspense
+                          fallback={
+                            <div className="loading">
+                              <LoaderCircle className="spin" />
+                              加载证据图谱…
+                            </div>
+                          }
+                        >
+                          <Graph
+                            key={run.id}
+                            nodes={run.nodes}
+                            selected={selected}
+                            onSelect={selectNode}
+                            collapsed={collapsed}
+                          />
+                          {node?.kind === 'reason' &&
+                            node.step !== undefined && (
+                              <button
+                                className="graph-collapse button secondary"
+                                onClick={() =>
+                                  setCollapsed((current) => {
+                                    const next = new Set(current);
+                                    if (next.has(node.step!))
+                                      next.delete(node.step!);
+                                    else next.add(node.step!);
+                                    return next;
+                                  })
+                                }
+                              >
+                                {collapsed.has(node.step)
+                                  ? '展开本轮查询'
+                                  : '折叠本轮查询'}
+                              </button>
+                            )}
+                        </Suspense>
+                      </ViewTransition>
+                    )}
+                  </ViewTransition>
+                </div>
+                {node && (
+                  <ViewTransition
+                    default="none"
+                    enter="slide-from-right"
+                    exit="slide-to-right"
+                  >
+                    <Detail
+                      key={`${run.id}-${node.id}`}
+                      node={node}
+                      draft={drafts[node.id] || {}}
+                      onEdit={(value) => editNode(node.id, value)}
+                      run={run}
+                      busy={busy}
+                      onClose={() => startTransition(() => setSelected(''))}
+                      onSelect={selectNode}
+                      onContinue={(decision, nextMode) =>
+                        void act(() => control('continue', decision, nextMode))
+                      }
+                      onFork={(id, decision) =>
+                        void act(() => forkRun(id, decision))
+                      }
+                      onChart={(nodeId, x, y) =>
+                        void act(async () => {
+                          const next = await post<Run>(
+                            `/runs/${run.id}/charts`,
+                            {
+                              nodeId,
+                              x,
+                              y,
+                            },
+                          );
+                          setRun((current) =>
+                            current?.id === next.id &&
+                            current.revision > next.revision
+                              ? current
+                              : next,
+                          );
+                          setSelected(next.nodes.at(-1)!.id);
+                        })
+                      }
+                    />
+                  </ViewTransition>
+                )}
+              </div>
+            </div>
+          )}
+        </ViewTransition>
       </main>
       <dialog
         ref={dialog}
