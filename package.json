@@ -1,0 +1,13 @@
+{
+  "name": "ava-notebook",
+  "version": "0.1.0",
+  "private": true,
+  "description": "An interactive notebook for inspecting and editing AVA analysis steps.",
+  "type": "module",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "dependencies": {
+    "@antv/ava": "file:../AVA"
+  }
+}
