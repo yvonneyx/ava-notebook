@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import AnalysisText from './AnalysisText';
 import {
   X,
   GitBranch,
@@ -20,6 +21,9 @@ export function DataTable({
 }) {
   const [page, setPage] = useState(0);
   const names = columns || Object.keys(rows[0] || {});
+  const numeric = new Set(
+    names.filter((name) => rows.some((row) => typeof row[name] === 'number')),
+  );
   return (
     <>
       <div className="table-scroll">
@@ -27,15 +31,30 @@ export function DataTable({
           <thead>
             <tr>
               {names.map((name) => (
-                <th key={name}>{name}</th>
+                <th
+                  key={name}
+                  className={numeric.has(name) ? 'numeric' : undefined}
+                >
+                  {name}
+                </th>
               ))}
             </tr>
           </thead>
           <tbody>
+            {!rows.length && (
+              <tr>
+                <td colSpan={names.length || 1} className="table-empty">
+                  无匹配结果
+                </td>
+              </tr>
+            )}
             {rows.slice(page * 20, page * 20 + 20).map((row, index) => (
               <tr key={index}>
                 {names.map((name) => (
-                  <td key={name}>
+                  <td
+                    key={name}
+                    className={numeric.has(name) ? 'numeric' : undefined}
+                  >
                     {row[name] === null ? (
                       <span className="muted">null</span>
                     ) : (
@@ -67,11 +86,17 @@ export function DataTable({
     </>
   );
 }
-function Bars({ node }: { node: Evidence }) {
+export function Bars({ node }: { node: Evidence }) {
   const rows = node.payload.rows as { label: string; value: number }[];
   const max = Math.max(...rows.map((r) => Math.abs(r.value)), 1);
   return (
-    <div className="bars" role="img" aria-label={`${node.title}柱状图`}>
+    <div
+      className="bars"
+      role="img"
+      aria-label={`${node.title}柱状图，${rows
+        .map((row) => `${row.label}：${row.value}`)
+        .join('；')}`}
+    >
       {rows.map((row, i) => (
         <div className="bar-row" key={i}>
           <span title={row.label}>{row.label}</span>
@@ -91,6 +116,8 @@ function Bars({ node }: { node: Evidence }) {
 }
 export default function Detail({
   node,
+  draft,
+  onEdit,
   run,
   busy,
   onClose,
@@ -100,6 +127,8 @@ export default function Detail({
   onSelect,
 }: {
   node: Evidence;
+  draft: { sql?: string; instruction?: string };
+  onEdit: (value: { sql?: string; instruction?: string }) => void;
   run: Run;
   busy: boolean;
   onClose: () => void;
@@ -114,14 +143,12 @@ export default function Detail({
   onChart: (nodeId: string, x: string, y: string) => void;
   onSelect: (id: string) => void;
 }) {
-  const [sql, setSQL] = useState(node.payload.sql || '');
-  const [instruction, setInstruction] = useState('');
+  const sql = draft.sql ?? node.payload.sql ?? '';
+  const instruction = draft.instruction ?? '';
   const [copied, setCopied] = useState(false);
   const [chartX, setChartX] = useState('');
   const [chartY, setChartY] = useState('');
   useEffect(() => {
-    setSQL(node.payload.sql || '');
-    setInstruction('');
     const columns = node.payload.schema || [];
     setChartX(columns[0]?.name || '');
     setChartY(
@@ -137,7 +164,13 @@ export default function Detail({
     ...(instruction.trim() ? { instruction } : {}),
   };
   return (
-    <aside className="detail" aria-label="节点详情">
+    <aside
+      className="detail"
+      aria-label="节点详情"
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') onClose();
+      }}
+    >
       <div className="detail-header">
         <span>{kindLabels[node.kind]}</span>
         <button
@@ -156,17 +189,13 @@ export default function Detail({
           </span>
         </div>
         <div className="detail-meta">
-          <span className="mono">#{node.id}</span>
+          <span>步骤 {String(node.sequence + 1).padStart(2, '0')}</span>
           {node.duration !== undefined && (
             <span>{(node.duration / 1000).toFixed(2)} 秒</span>
           )}
           {node.inherited && <span>继承自原分支</span>}
         </div>
-        {waiting && (
-          <div className="notice pause-notice">
-            执行已暂停。检查或修改内容后，可以继续分析。
-          </div>
-        )}
+        {waiting && <div className="notice pause-notice">等待执行</div>}
         {node.payload.error && (
           <div role="alert" className="notice error-notice">
             {node.payload.error.message}
@@ -190,8 +219,10 @@ export default function Detail({
             </div>
             <h3>数据预览</h3>
             <DataTable rows={node.payload.preview || []} />
-            <h3>数据指纹</h3>
-            <p className="fingerprint mono">{node.payload.hash}</p>
+            <details>
+              <summary>数据指纹</summary>
+              <p className="fingerprint mono">{node.payload.hash}</p>
+            </details>
           </>
         )}
         {node.kind === 'context' && (
@@ -216,9 +247,9 @@ export default function Detail({
         {node.kind === 'reason' && (
           <>
             {node.payload.text && (
-              <div className="prose">
-                {node.payload.text.replace(/^\[.*?\]\s*/, '')}
-              </div>
+              <AnalysisText
+                text={node.payload.text.replace(/^\[.*?\]\s*/, '')}
+              />
             )}
             {node.payload.finalAttempt && (
               <div className="notice">已达到轮次上限，本轮为最终尝试。</div>
@@ -226,7 +257,7 @@ export default function Detail({
             {node.payload.prompt && (
               <details>
                 <summary>
-                  <FileCode2 size={14} /> 实际模型输入上下文
+                  <FileCode2 size={14} /> 模型输入
                 </summary>
                 <pre>{node.payload.prompt}</pre>
               </details>
@@ -242,7 +273,11 @@ export default function Detail({
         {node.kind === 'query' && (
           <>
             <div className="section-label">
-              <h3>实际执行 SQL</h3>
+              <h3>
+                {waiting || node.status === 'ready'
+                  ? '待执行 SQL'
+                  : '实际执行 SQL'}
+              </h3>
               <button
                 className="icon-button"
                 aria-label="复制 SQL"
@@ -263,21 +298,16 @@ export default function Detail({
               className="code-editor mono"
               aria-label="SQL 编辑器"
               value={sql}
-              onChange={(e) => setSQL(e.target.value)}
+              onChange={(e) => onEdit({ sql: e.target.value })}
               readOnly={!canEdit}
               spellCheck={false}
             />
             {node.payload.originalSQL && (
               <details>
-                <summary>查看修改前的 SQL</summary>
+                <summary>原始 SQL</summary>
                 <pre>{node.payload.originalSQL}</pre>
               </details>
             )}
-            <p className="hint">
-              {canEdit
-                ? '修改会记录为人工介入，并进入后续分析上下文。'
-                : '执行记录已保存。可从此节点创建新分支。'}
-            </p>
           </>
         )}
         {node.kind === 'result' && (
@@ -288,53 +318,58 @@ export default function Detail({
                 {node.payload.truncatedBy === 'maxRows'
                   ? '达到行数限制'
                   : '达到字节限制'}
-                。不能将这部分明细视为全量统计。
+                。仅显示部分结果。
               </div>
             )}
             <DataTable
               rows={node.payload.data || []}
               columns={node.payload.schema?.map((c: any) => c.name)}
             />
-            <h3>将结果绘制为图表</h3>
-            <div className="chart-controls">
-              <label>
-                分类
-                <select
-                  value={chartX}
-                  onChange={(e) => setChartX(e.target.value)}
-                >
-                  {node.payload.schema?.map((c: any) => (
-                    <option key={c.name}>{c.name}</option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                数值
-                <select
-                  value={chartY}
-                  onChange={(e) => setChartY(e.target.value)}
-                >
-                  <option value="">选择数值列</option>
-                  {node.payload.schema
-                    ?.filter(
-                      (c: any) =>
-                        typeof node.payload.data?.[0]?.[c.name] === 'number',
-                    )
-                    .map((c: any) => (
+            <details className="chart-options">
+              <summary>
+                <ChartColumn size={14} />
+                生成图表
+              </summary>
+              <div className="chart-controls">
+                <label>
+                  分类
+                  <select
+                    value={chartX}
+                    onChange={(e) => setChartX(e.target.value)}
+                  >
+                    {node.payload.schema?.map((c: any) => (
                       <option key={c.name}>{c.name}</option>
                     ))}
-                </select>
-              </label>
-            </div>
-            <button
-              className="button secondary full"
-              disabled={busy || !chartY}
-              onClick={() => onChart(node.id, chartX, chartY)}
-            >
-              <ChartColumn size={15} />
-              生成柱状图
-            </button>
-            <p className="hint">使用当前结果的前 20 行，图表保留来源引用。</p>
+                  </select>
+                </label>
+                <label>
+                  数值
+                  <select
+                    value={chartY}
+                    onChange={(e) => setChartY(e.target.value)}
+                  >
+                    <option value="">选择数值列</option>
+                    {node.payload.schema
+                      ?.filter(
+                        (c: any) =>
+                          typeof node.payload.data?.[0]?.[c.name] === 'number',
+                      )
+                      .map((c: any) => (
+                        <option key={c.name}>{c.name}</option>
+                      ))}
+                  </select>
+                </label>
+              </div>
+              <button
+                className="button secondary full"
+                disabled={busy || !chartY}
+                onClick={() => onChart(node.id, chartX, chartY)}
+              >
+                <ChartColumn size={15} />
+                生成柱状图
+              </button>
+              <p className="hint">使用前 20 行结果</p>
+            </details>
           </>
         )}
         {node.kind === 'conclusion' && (
@@ -347,10 +382,10 @@ export default function Detail({
               }`}
             >
               {node.payload.completionReason === 'confirmed'
-                ? '模型已完成检查。请结合下方执行证据判断结论。'
-                : '已获得执行结果，但未完成模型验证。'}
+                ? '已完成模型检查'
+                : '执行完成 · 尚未验证'}
             </div>
-            <div className="prose">{node.payload.text || '等待分析完成'}</div>
+            <AnalysisText text={node.payload.text || '等待分析完成'} />
           </>
         )}
         {node.kind === 'chart' && (
@@ -383,10 +418,10 @@ export default function Detail({
         )}
         {canEdit && node.checkpoint && node.kind !== 'conclusion' && (
           <label className="field">
-            补充分析要求<span className="hint">作为用户指令进入后续 loop</span>
+            补充要求
             <textarea
               value={instruction}
-              onChange={(e) => setInstruction(e.target.value)}
+              onChange={(e) => onEdit({ instruction: e.target.value })}
               placeholder="例如：只分析线上渠道，并核对异常值。"
               maxLength={8000}
             />
@@ -407,7 +442,7 @@ export default function Detail({
               </button>
               <button
                 className="button secondary full"
-                disabled={busy}
+                disabled={busy || (node.kind === 'query' && !sql.trim())}
                 onClick={() => onContinue(decision, 'step')}
               >
                 执行单步 <ChevronDown size={14} />
@@ -416,11 +451,13 @@ export default function Detail({
           ) : (
             <button
               className="button secondary full"
-              disabled={busy || isActive(run)}
+              disabled={
+                busy || isActive(run) || (node.kind === 'query' && !sql.trim())
+              }
               onClick={() => onFork(node.id, decision)}
             >
               <GitBranch size={15} />
-              从此处创建分支重跑
+              新建分支并重跑
             </button>
           )}
         </div>

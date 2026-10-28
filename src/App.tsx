@@ -2,6 +2,10 @@ import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import {
   Plus,
   ArrowUp,
+  ArrowDown,
+  PanelLeft,
+  Database,
+  ShieldCheck,
   ArrowRight,
   Upload,
   FileSpreadsheet,
@@ -25,7 +29,7 @@ import { api, post } from './api';
 import type { Run, Source, Mode, Session, Evidence } from './types';
 import { statusLabels, isActive } from './types';
 import Notebook from './Notebook';
-import Detail from './Detail';
+import Detail, { DataTable } from './Detail';
 const Graph = lazy(() => import('./Graph'));
 const modeOptions = (
   <>
@@ -51,15 +55,36 @@ export default function App() {
   const [baseURL, setBaseURL] = useState('https://api.openai.com/v1');
   const [key, setKey] = useState('');
   const [search, setSearch] = useState('');
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  const [drafts, setDrafts] = useState<
+    Record<string, { sql?: string; instruction?: string }>
+  >({});
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
   const fileInput = useRef<HTMLInputElement>(null);
   const dialog = useRef<HTMLDialogElement>(null);
+  const sidebar = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const width = matchMedia('(max-width: 800px)');
+    const close = () => {
+      if (!width.matches) setSidebarOpen(false);
+    };
+    width.addEventListener('change', close);
+    return () => width.removeEventListener('change', close);
+  }, []);
+  useEffect(() => {
+    if (sidebarOpen)
+      sidebar.current?.querySelector<HTMLAnchorElement>('a')?.focus();
+  }, [sidebarOpen]);
   async function refreshRuns() {
     setRuns(await api<Run[]>('/runs'));
   }
   async function openRun(id: string) {
     const next = await api<Run>(`/runs/${id}`);
     setRun(next);
+    setDrafts({});
+    setView('notebook');
+    setSidebarOpen(false);
     setSelected('');
     setCollapsed(new Set());
     history.replaceState(null, '', `?run=${id}`);
@@ -137,6 +162,44 @@ export default function App() {
     });
     setSource(uploaded);
   }
+  function newAnalysis() {
+    setRun(null);
+    setSource(null);
+    setQuestion('');
+    setSelected('');
+    setDrafts({});
+    setSidebarOpen(false);
+    setView('notebook');
+    setError('');
+    history.replaceState(null, '', '/');
+  }
+  function editNode(id: string, value: { sql?: string; instruction?: string }) {
+    setDrafts((current) => ({
+      ...current,
+      [id]: { ...current[id], ...value },
+    }));
+  }
+  function decisionFor(
+    id: string,
+    value: { sql?: string; instruction?: string } = {},
+  ) {
+    const draft = { ...drafts[id], ...value };
+    return {
+      ...(draft.sql !== undefined ? { sql: draft.sql } : {}),
+      ...(draft.instruction?.trim()
+        ? { instruction: draft.instruction.trim() }
+        : {}),
+    };
+  }
+  function jumpToStep(id: string) {
+    setView('notebook');
+    setSelected('');
+    requestAnimationFrame(() =>
+      document
+        .getElementById(`step-${id}`)
+        ?.scrollIntoView({ block: 'center' }),
+    );
+  }
   const active = isActive(run);
   const node = run?.nodes.find((n) => n.id === selected);
   function selectNode(id: string) {
@@ -152,7 +215,9 @@ export default function App() {
       command,
       requestId: crypto.randomUUID(),
       nodeId: run.activeNodeId,
-      ...decision,
+      ...(command === 'continue'
+        ? decisionFor(run.activeNodeId || '', decision)
+        : decision),
       ...(nextMode ? { mode: nextMode } : {}),
     });
     setRun((current) =>
@@ -169,9 +234,12 @@ export default function App() {
       nodeId,
       mode: 'query',
       requestId: crypto.randomUUID(),
-      ...decision,
+      ...decisionFor(nodeId, decision),
     });
     setRun(next);
+    setDrafts({});
+    setView('notebook');
+    setSidebarOpen(false);
     setSelected('');
     setCollapsed(new Set());
     history.replaceState(null, '', `?run=${next.id}`);
@@ -183,38 +251,45 @@ export default function App() {
       .includes(search.toLowerCase()),
   );
   return (
-    <div className="app-shell">
-      <aside className="sidebar">
+    <div
+      className={`app-shell ${sidebarOpen ? 'sidebar-open' : ''}`}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') setSidebarOpen(false);
+      }}
+    >
+      {sidebarOpen && (
+        <button
+          className="sidebar-scrim"
+          aria-label="关闭侧边栏"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+      <aside className="sidebar" ref={sidebar}>
         <a
           className="brand"
           href="/"
           onClick={(e) => {
             e.preventDefault();
-            setRun(null);
-            setSelected('');
-            history.replaceState(null, '', '/');
+            newAnalysis();
           }}
         >
           <span className="brand-symbol">A</span>
           <strong>
             ava<span>notebook</span>
           </strong>
-          <span className="beta">LOCAL</span>
         </a>
         <button
+          aria-label="新建分析"
           className="new-analysis"
           onClick={() => {
-            setRun(null);
-            setSelected('');
-            setError('');
-            history.replaceState(null, '', '/');
+            newAnalysis();
           }}
         >
           <Plus size={16} />
-          新建分析<span>＋</span>
+          <span>新建分析</span>
         </button>
         <div className="sidebar-label">
-          工作空间 <span>{runs.length}</span>
+          最近分析 <span>{runs.length}</span>
         </div>
         {runs.length > 4 && (
           <label className="search">
@@ -223,6 +298,7 @@ export default function App() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="搜索分析"
+              aria-label="搜索分析"
             />
           </label>
         )}
@@ -230,6 +306,8 @@ export default function App() {
           {filtered.map((item) => (
             <button
               key={item.id}
+              title={item.question}
+              aria-current={run?.id === item.id ? 'page' : undefined}
               className={`history-item ${run?.id === item.id ? 'current' : ''}`}
               onClick={() => void act(() => openRun(item.id))}
             >
@@ -243,19 +321,9 @@ export default function App() {
               {isActive(item) && <i className="live-dot" />}
             </button>
           ))}
-          {!runs.length && (
-            <div className="history-empty">
-              分析记录会保存在这里。
-              <br />
-              随时回来，继续追溯。
-            </div>
-          )}
+          {!runs.length && <div className="history-empty">暂无分析记录</div>}
         </nav>
         <div className="sidebar-bottom">
-          <div className="local-note">
-            <span className="live-dot" />
-            本地工作空间<span className="mono">v0.1</span>
-          </div>
           <button
             className="model-button"
             aria-label="配置分析模型"
@@ -269,23 +337,30 @@ export default function App() {
                 {session?.configured ? session.model : '连接分析模型'}
               </strong>
               <span>
-                {session?.configured ? '模型已配置' : '设置 API Key 与模型'}
+                {session?.configured ? '模型设置' : '配置模型后开始分析'}
               </span>
             </div>
             <Settings2 size={15} />
           </button>
         </div>
       </aside>
-      <main className="main">
+      <main className="main" inert={sidebarOpen}>
         <header className="topbar">
           <div>
-            <BookOpen size={15} />
+            <button
+              className="icon-button sidebar-toggle"
+              aria-label="展开侧边栏"
+              aria-expanded={sidebarOpen}
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+            >
+              <PanelLeft size={18} />
+            </button>
             <span>工作空间</span>
             <ChevronRight size={13} />
-            <strong>{run ? '分析记录' : '新建分析'}</strong>
+            <strong>{run ? '分析记录' : '概览'}</strong>
           </div>
           <span className="topbar-note">
-            Powered by AVA <span className="mono">loop</span>
+            <span className="connection-dot ok" /> 本地工作空间
           </span>
         </header>
         {error && (
@@ -303,161 +378,219 @@ export default function App() {
         {!run ? (
           <div className="home">
             <div className="home-content">
-              <div className="home-kicker">
-                <span className="tiny-mark" /> EVIDENCE, AT EVERY STEP.
+              <div className="home-heading">
+                <div>
+                  <span className="page-kicker">NOTEBOOK</span>
+                  <h1>新建分析</h1>
+                </div>
+                <span className="file-type-tag">
+                  <FileSpreadsheet size={14} /> CSV
+                </span>
               </div>
-              <h1>
-                让每一步分析，
-                <br />
-                <span>都有据可循。</span>
-              </h1>
-              <p className="home-subtitle">
-                从一个问题开始。探索数据，检视过程，在需要时介入。
-              </p>
               <div className="compose-card">
-                <div
-                  className={`upload-area ${source ? 'has-source' : ''}`}
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    const file = e.dataTransfer.files[0];
-                    if (file) void act(() => upload(file));
-                  }}
-                >
-                  <div className="file-icon">
-                    <FileSpreadsheet size={23} />
+                <section className="source-section" aria-label="导入数据">
+                  <div className="section-heading">
+                    <span className="section-number">01</span>
+                    <h2>数据源</h2>
                   </div>
-                  <div>
-                    <strong>
-                      {source ? source.name : '添加你的 CSV 数据'}
-                    </strong>
-                    <p>
-                      {source
-                        ? `${source.rows.toLocaleString()} 行 · ${
-                            source.headers.length
-                          } 个字段 · 已保存快照`
-                        : '拖入文件，或从本地选择 · UTF-8 · 最大 10 MB'}
-                    </p>
-                  </div>
-                  <button
-                    className="button secondary"
-                    disabled={busy}
-                    onClick={() => fileInput.current?.click()}
+                  <div
+                    className={`upload-area ${source ? 'has-source' : ''} ${
+                      dragging ? 'dragging' : ''
+                    }`}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      if (!busy) setDragging(true);
+                    }}
+                    onDragLeave={(e) => {
+                      if (!e.currentTarget.contains(e.relatedTarget as Node))
+                        setDragging(false);
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      setDragging(false);
+                      const file = e.dataTransfer.files[0];
+                      if (file && !busy) void act(() => upload(file));
+                    }}
                   >
-                    {source ? '更换' : '选择文件'}
-                    <Upload size={13} />
-                  </button>
-                  <input
-                    ref={fileInput}
-                    type="file"
-                    accept=".csv,text/csv"
-                    hidden
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) void act(() => upload(file));
-                      e.target.value = '';
+                    <div className="file-icon">
+                      <FileSpreadsheet size={23} />
+                    </div>
+                    <div className="file-info">
+                      <strong>{source ? source.name : '拖入 CSV 文件'}</strong>
+                      <p>
+                        {source
+                          ? `${source.rows.toLocaleString()} 行 · ${
+                              source.headers.length
+                            } 个字段 · ${(source.bytes / 1024).toFixed(1)} KB`
+                          : 'UTF-8 · 最大 10 MB'}
+                      </p>
+                    </div>
+                    <button
+                      className="button secondary"
+                      disabled={busy}
+                      onClick={() => fileInput.current?.click()}
+                    >
+                      {source ? '更换文件' : '选择文件'}
+                      <Upload size={14} />
+                    </button>
+                    <input
+                      ref={fileInput}
+                      type="file"
+                      accept=".csv,text/csv"
+                      hidden
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) void act(() => upload(file));
+                        e.target.value = '';
+                      }}
+                    />
+                  </div>
+                  {source ? (
+                    <details className="source-preview" key={source.id}>
+                      <summary>
+                        预览数据
+                        <span>
+                          {source.headers.slice(0, 4).join(' · ')}
+                          {source.headers.length > 4 ? ' …' : ''}
+                        </span>
+                      </summary>
+                      <DataTable rows={source.preview} />
+                    </details>
+                  ) : (
+                    <button
+                      className="sample-button"
+                      disabled={busy}
+                      onClick={() =>
+                        void act(async () => {
+                          const response = await fetch('/sales.csv');
+                          if (!response.ok) throw new Error('示例文件加载失败');
+                          await upload(
+                            new File([await response.blob()], 'sales.csv', {
+                              type: 'text/csv',
+                            }),
+                          );
+                          setQuestion(
+                            '对比 2025 年 1 月和 2 月的销售额，找出下降最多的产品。',
+                          );
+                        })
+                      }
+                    >
+                      <Database size={14} />
+                      使用销售示例数据
+                      <ArrowRight size={14} />
+                    </button>
+                  )}
+                </section>
+                <section className="question-section" aria-label="提出问题">
+                  <div className="section-heading">
+                    <span className="section-number">02</span>
+                    <h2>分析问题</h2>
+                    <kbd>⌘ / Ctrl ↵</kbd>
+                  </div>
+                  <textarea
+                    className="question-input"
+                    aria-label="分析问题"
+                    value={question}
+                    onChange={(e) => setQuestion(e.target.value)}
+                    placeholder="例如：销售额为什么下降？主要受哪些产品影响？"
+                    maxLength={8000}
+                    onKeyDown={(e) => {
+                      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter')
+                        document.getElementById('start-analysis')?.click();
                     }}
                   />
-                </div>
-                <textarea
-                  className="question-input"
-                  aria-label="分析问题"
-                  value={question}
-                  onChange={(e) => setQuestion(e.target.value)}
-                  placeholder="你想从数据中了解什么？"
-                  maxLength={8000}
-                  onKeyDown={(e) => {
-                    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter')
-                      document.getElementById('start-analysis')?.click();
-                  }}
-                />
-                <div className="compose-footer">
-                  <label className="mode-picker">
-                    <span className="mode-icon">↳</span>
-                    <select
-                      aria-label="执行方式"
-                      value={mode}
-                      onChange={(e) => setMode(e.target.value as Mode)}
-                    >
-                      {modeOptions}
-                    </select>
-                    <ChevronDown size={12} />
-                  </label>
-                  <button
-                    id="start-analysis"
-                    className="button primary"
-                    disabled={busy || !source || !question.trim()}
-                    onClick={() => {
-                      if (!session?.configured) {
-                        setSettings(true);
-                        return;
-                      }
-                      void act(async () => {
-                        const next = await post<Run>('/runs', {
-                          sourceId: source!.id,
-                          question,
-                          mode,
-                          requestId: crypto.randomUUID(),
+                  <div className="compose-footer">
+                    <div className="compose-options">
+                      <button
+                        className="composer-model"
+                        onClick={() => setSettings(true)}
+                      >
+                        <span
+                          className={`connection-dot ${
+                            session?.configured ? 'ok' : ''
+                          }`}
+                        />
+                        {session?.configured ? session.model : '配置模型'}
+                        <ChevronDown size={12} />
+                      </button>
+                      <span className="option-divider" />
+                      <label className="mode-picker">
+                        <select
+                          aria-label="执行方式"
+                          value={mode}
+                          onChange={(e) => setMode(e.target.value as Mode)}
+                        >
+                          {modeOptions}
+                        </select>
+                        <ChevronDown size={12} />
+                      </label>
+                    </div>
+                    <button
+                      id="start-analysis"
+                      className="button primary"
+                      disabled={busy || !source || !question.trim()}
+                      onClick={() => {
+                        if (!session?.configured) {
+                          setSettings(true);
+                          return;
+                        }
+                        void act(async () => {
+                          const next = await post<Run>('/runs', {
+                            sourceId: source!.id,
+                            question,
+                            mode,
+                            requestId: crypto.randomUUID(),
+                          });
+                          setRun(next);
+                          setDrafts({});
+                          setView('notebook');
+                          setSelected('');
+                          history.replaceState(null, '', `?run=${next.id}`);
+                          await refreshRuns();
                         });
-                        setRun(next);
-                        setSelected('');
-                        history.replaceState(null, '', `?run=${next.id}`);
-                        await refreshRuns();
-                      });
-                    }}
-                  >
-                    {busy ? (
-                      <LoaderCircle size={15} className="spin" />
-                    ) : (
-                      <ArrowUp size={16} />
-                    )}
-                    开始分析
-                  </button>
-                </div>
-              </div>
-              <div className="sample-row">
-                <span>想先试一试？</span>
-                <button
-                  disabled={busy}
-                  onClick={() =>
-                    void act(async () => {
-                      const response = await fetch('/sales.csv');
-                      if (!response.ok) throw new Error('示例文件加载失败');
-                      await upload(
-                        new File([await response.blob()], 'sales.csv', {
-                          type: 'text/csv',
-                        }),
-                      );
-                      setQuestion(
-                        '对比 2025 年 1 月和 2 月的销售额，找出对下降贡献最大的产品，并验证结论。',
-                      );
-                    })
-                  }
-                >
-                  <span className="sample-symbol">↘</span>探索一份销售数据
-                  <ArrowRight size={14} />
-                </button>
-              </div>
-              <div className="principles">
-                <div>
-                  <span>01</span>
-                  <strong>自然提问</strong>
-                  <p>AVA loop 自动探索与验证</p>
-                </div>
-                <div>
-                  <span>02</span>
-                  <strong>过程可见</strong>
-                  <p>每条查询都有真实执行依据</p>
-                </div>
-                <div>
-                  <span>03</span>
-                  <strong>随时介入</strong>
-                  <p>暂停、修改，再继续分析</p>
-                </div>
+                      }}
+                    >
+                      {busy ? (
+                        <LoaderCircle size={15} className="spin" />
+                      ) : (
+                        <ArrowUp size={16} />
+                      )}
+                      开始分析
+                    </button>
+                  </div>
+                </section>
               </div>
               <p className="privacy-note">
-                记录保存在本机。分析时，必要的数据上下文会发送给你配置的模型服务。
+                <ShieldCheck size={13} />
+                记录保存在本机，分析上下文发送至所选模型。
               </p>
+              {runs.length > 0 && (
+                <section className="recent-section">
+                  <div className="recent-heading">
+                    <h2>最近分析</h2>
+                    <span>{runs.length} 份记录</span>
+                  </div>
+                  {runs.slice(0, 3).map((item) => (
+                    <button
+                      key={item.id}
+                      className="recent-item"
+                      onClick={() => void act(() => openRun(item.id))}
+                    >
+                      <span className="recent-icon">
+                        <BookOpen size={17} />
+                      </span>
+                      <span className="recent-title">
+                        <strong>{item.question}</strong>
+                        <small>{item.source.name}</small>
+                      </span>
+                      <span className={`status status-${item.status}`}>
+                        {statusLabels[item.status]}
+                      </span>
+                      <ArrowRight size={15} />
+                    </button>
+                  ))}
+                </section>
+              )}
             </div>
           </div>
         ) : (
@@ -477,11 +610,14 @@ export default function App() {
                       查看原分支
                     </button>
                   )}
-                  <span>{run.source.name}</span>
+                  <span className="task-source">
+                    <FileSpreadsheet size={13} />
+                    {run.source.name}
+                  </span>
                 </div>
                 <h1 title={run.question}>{run.question}</h1>
                 <div className="task-meta">
-                  <span>{run.nodes.length} 个证据节点</span>
+                  <span>{run.nodes.length} 个步骤</span>
                   <span>
                     {run.nodes.filter((n) => n.kind === 'reason').length} 轮分析
                   </span>
@@ -492,11 +628,12 @@ export default function App() {
                 </div>
               </div>
               <a
+                aria-label="导出证据"
                 className="button secondary export-button"
                 href={`/api/runs/${run.id}/export`}
               >
                 <Download size={14} />
-                导出证据
+                导出
               </a>
             </div>
             {run.error && (
@@ -518,18 +655,20 @@ export default function App() {
             <div className="workspace-toolbar">
               <div className="segmented">
                 <button
+                  aria-pressed={view === 'notebook'}
                   className={view === 'notebook' ? 'active' : ''}
                   onClick={() => setView('notebook')}
                 >
                   <List size={14} />
-                  分析笔记
+                  Notebook
                 </button>
                 <button
+                  aria-pressed={view === 'graph'}
                   className={view === 'graph' ? 'active' : ''}
                   onClick={() => setView('graph')}
                 >
                   <Network size={14} />
-                  证据图谱
+                  图谱
                 </button>
               </div>
               <div className="run-controls">
@@ -550,7 +689,10 @@ export default function App() {
                     {run.status === 'paused' ? (
                       <button
                         className="button primary small"
-                        disabled={busy}
+                        disabled={
+                          busy ||
+                          drafts[run.activeNodeId || '']?.sql?.trim() === ''
+                        }
                         onClick={() => void act(() => control('continue'))}
                       >
                         <Play size={13} />
@@ -577,14 +719,36 @@ export default function App() {
                     </button>
                   </>
                 )}
-                {!active && <span className="muted">执行历史已保存</span>}
+                {run.nodes.some((n) => n.id === 'conclusion') && !active ? (
+                  <button
+                    className="text-button jump-button"
+                    onClick={() => jumpToStep('conclusion')}
+                  >
+                    查看结论
+                    <ArrowDown size={14} />
+                  </button>
+                ) : (
+                  run.activeNodeId && (
+                    <button
+                      className="icon-button"
+                      title="定位当前步骤"
+                      aria-label="定位当前步骤"
+                      onClick={() => jumpToStep(run.activeNodeId!)}
+                    >
+                      <ArrowDown size={15} />
+                    </button>
+                  )
+                )}
               </div>
             </div>
             <div className="work-body">
               <div className="work-canvas">
                 {view === 'notebook' ? (
                   <Notebook
+                    key={run.id}
                     run={run}
+                    drafts={drafts}
+                    onEdit={editNode}
                     busy={busy}
                     selected={selected}
                     onSelect={selectNode}
@@ -633,6 +797,8 @@ export default function App() {
                 <Detail
                   key={`${run.id}-${node.id}`}
                   node={node}
+                  draft={drafts[node.id] || {}}
+                  onEdit={(value) => editNode(node.id, value)}
                   run={run}
                   busy={busy}
                   onClose={() => setSelected('')}
@@ -690,8 +856,7 @@ export default function App() {
         >
           <div className="modal-header">
             <div>
-              <span className="eyebrow">MODEL CONNECTION</span>
-              <h2>连接分析模型</h2>
+              <h2>模型设置</h2>
             </div>
             <button
               type="button"
@@ -737,10 +902,7 @@ export default function App() {
               }
             />
           </label>
-          <div className="notice">
-            密钥仅保存在本地服务进程中，重启后需重新输入。也可通过项目的 .env
-            文件配置。
-          </div>
+          <div className="notice">本次配置仅在当前服务运行期间生效。</div>
           <button className="button primary full" disabled={busy} type="submit">
             {busy ? (
               <LoaderCircle size={15} className="spin" />

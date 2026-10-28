@@ -58,10 +58,10 @@ export const statusLabels: Record<string, string> = {
 };
 export const kindLabels: Record<string, string> = {
   source: 'CSV 数据源',
-  context: '数据上下文',
-  reason: 'LOOP 分析',
+  context: '数据结构',
+  reason: '模型分析',
   query: 'SQL 执行',
-  result: '查询证据',
+  result: '查询结果',
   conclusion: '分析结论',
   chart: '结果图表',
 };

@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import {
   ArrowUpRight,
   Play,
@@ -8,12 +7,18 @@ import {
   Table2,
   CheckCircle2,
   LoaderCircle,
-  CirclePause,
   GitBranch,
+  ChevronRight,
+  Clock3,
+  Layers2,
+  FileSpreadsheet,
+  CirclePause,
 } from 'lucide-react';
 import type { Evidence, Run } from './types';
 import { statusLabels } from './types';
-import { DataTable } from './Detail';
+import { Bars, DataTable } from './Detail';
+import AnalysisText from './AnalysisText';
+
 const icons: Record<string, typeof Database> = {
   source: Database,
   context: ScanSearch,
@@ -23,25 +28,28 @@ const icons: Record<string, typeof Database> = {
   conclusion: CheckCircle2,
   chart: Table2,
 };
+type Draft = { sql?: string; instruction?: string };
+
 function Query({
   node,
   waiting,
   busy,
+  sql,
+  onEdit,
   execute,
 }: {
   node: Evidence;
   waiting: boolean;
   busy: boolean;
-  execute: (sql: string) => void;
+  sql: string;
+  onEdit: (sql: string) => void;
+  execute: () => void;
 }) {
-  const [sql, setSQL] = useState(node.payload.sql || '');
   return (
     <>
       <div className="code-caption">
-        <span>
-          SQL <span className="muted">/ DuckDB</span>
-        </span>
-        {waiting && <span className="amber">可修改 · 执行前断点</span>}
+        <span className="code-language">SQL</span>
+        <span>{waiting ? '执行前暂停' : 'DuckDB'}</span>
       </div>
       {waiting ? (
         <textarea
@@ -49,7 +57,7 @@ function Query({
           aria-label="编辑待执行的 SQL"
           spellCheck={false}
           value={sql}
-          onChange={(e) => setSQL(e.target.value)}
+          onChange={(e) => onEdit(e.target.value)}
           onKeyDown={(e) => {
             if (
               (e.metaKey || e.ctrlKey) &&
@@ -57,32 +65,40 @@ function Query({
               sql.trim() &&
               !busy
             )
-              execute(sql);
+              execute();
           }}
         />
       ) : (
-        <pre className="inline-code">{node.payload.sql}</pre>
+        <pre className="inline-code">
+          <code>{node.payload.sql}</code>
+        </pre>
       )}
       {waiting && (
         <div className="inline-actions">
-          <span>修改将被记录，并影响后续分析。</span>
+          <span>
+            <CirclePause size={13} />
+            等待运行
+          </span>
           <button
             className="button primary"
             disabled={busy || !sql.trim()}
-            onClick={() => execute(sql)}
+            onClick={execute}
           >
             <Play size={13} />
-            {sql !== node.payload.sql ? '应用修改并运行' : '执行查询'}
+            {sql !== node.payload.sql ? '应用并运行' : '运行查询'}
           </button>
         </div>
       )}
     </>
   );
 }
+
 export default function Notebook({
   run,
   busy,
   selected,
+  drafts,
+  onEdit,
   onSelect,
   onContinue,
   onFork,
@@ -90,6 +106,8 @@ export default function Notebook({
   run: Run;
   busy: boolean;
   selected?: string;
+  drafts: Record<string, Draft>;
+  onEdit: (id: string, value: Draft) => void;
   onSelect: (id: string) => void;
   onContinue: (sql?: string) => void;
   onFork: (id: string) => void;
@@ -97,133 +115,97 @@ export default function Notebook({
   return (
     <div className="notebook-scroll">
       <div className="notebook-paper">
-        <div className="notebook-intro">
-          <span className="eyebrow">ANALYSIS RECORD</span>
-          <h2>分析过程</h2>
-          <p>每一步来自 AVA 的真实执行事件。选择步骤，查看输入与依据。</p>
-        </div>
-        {run.nodes.map((node, index) => {
-          const Icon = icons[node.kind] || ScanSearch;
-          const waiting =
-            run.status === 'paused' && run.activeNodeId === node.id;
-          return (
-            <article
-              key={node.id}
-              id={`step-${node.id}`}
-              className={`notebook-step ${
-                selected === node.id ? 'focused' : ''
-              } ${waiting ? 'waiting' : ''}`}
-            >
-              <div className="step-gutter">
-                <span className="mono">
-                  {String(index + 1).padStart(2, '0')}
+        <div className="notebook-data">
+          {run.nodes
+            .filter((n) => n.kind === 'source' || n.kind === 'context')
+            .map((node) => (
+              <button
+                id={`step-${node.id}`}
+                key={node.id}
+                className={`data-step ${
+                  selected === node.id ? 'selected' : ''
+                }`}
+                onClick={() => onSelect(node.id)}
+              >
+                <span className="data-step-icon">
+                  {node.kind === 'source' ? (
+                    <FileSpreadsheet size={19} />
+                  ) : (
+                    <Layers2 size={17} />
+                  )}
                 </span>
-                <i />
-              </div>
-              <div className="step-content">
-                <div className="step-heading">
-                  <button
-                    className="step-name"
-                    onClick={() => onSelect(node.id)}
-                  >
-                    <Icon size={16} />
-                    <strong>{node.title}</strong>
-                  </button>
-                  <div className="step-tools">
-                    <span className={`status status-${node.status}`}>
-                      {node.status === 'running' ? (
-                        <LoaderCircle size={12} className="spin" />
-                      ) : waiting ? (
-                        <CirclePause size={12} />
-                      ) : null}
-                      {statusLabels[node.status]}
-                    </span>
-                    <button
-                      className="icon-button"
-                      title="查看证据详情"
-                      aria-label={`查看 ${node.title} 的证据详情`}
-                      onClick={() => onSelect(node.id)}
-                    >
-                      <ArrowUpRight size={15} />
-                    </button>
-                  </div>
-                </div>
-                {node.kind === 'source' && (
-                  <div className="source-inline">
-                    <Database size={25} />
-                    <div>
-                      <strong>
-                        {node.payload.rows?.toLocaleString()} 行 ×{' '}
-                        {node.payload.headers?.length} 列
-                      </strong>
-                      <p>
-                        已保存 CSV 快照{' '}
-                        <span className="mono">
-                          {node.payload.hash?.slice(0, 10)}
-                        </span>
-                      </p>
-                    </div>
-                    <button
-                      className="text-button"
-                      onClick={() => onSelect(node.id)}
-                    >
-                      预览数据
-                    </button>
-                  </div>
-                )}
-                {node.kind === 'context' && (
-                  <div className="context-chips">
-                    {node.payload.schema?.models?.flatMap((m: any) =>
-                      m.columns.map((c: any) => (
-                        <span key={`${m.name}.${c.name}`}>
-                          <b>{c.name}</b>
-                          <small>{c.type}</small>
-                        </span>
-                      )),
-                    )}
-                    <button
-                      className="text-button"
-                      onClick={() => onSelect(node.id)}
-                    >
-                      查看统计 ↗
-                    </button>
-                  </div>
-                )}
-                {node.kind === 'reason' && (
-                  <>
-                    {node.payload.text ? (
-                      <div className="prose notebook-prose">
-                        {node.payload.text.replace(/^\[.*?\]\s*/, '')}
-                      </div>
-                    ) : (
-                      <p className="muted">
-                        {waiting
-                          ? '等待继续本轮分析。'
-                          : '正在结合数据与已有证据分析…'}
-                      </p>
-                    )}
-                    {node.payload.finalAttempt && (
-                      <div className="notice">
-                        轮次上限后的最终尝试，结果仍需复核。
-                      </div>
-                    )}
-                  </>
+                <span>
+                  <strong>
+                    {node.kind === 'source' ? node.title : '字段与数据质量'}
+                  </strong>
+                  <small>
+                    {node.kind === 'source'
+                      ? `${node.payload.rows?.toLocaleString()} 行 · ${
+                          node.payload.headers?.length
+                        } 个字段`
+                      : run.source.headers.slice(0, 4).join(' · ') +
+                        (run.source.headers.length > 4 ? ' …' : '')}
+                  </small>
+                </span>
+                <span className="data-step-action">
+                  {node.kind === 'source' ? '预览' : '查看'}
+                  <ChevronRight size={14} />
+                </span>
+              </button>
+            ))}
+        </div>
+        <div className="process-heading">
+          <h2>分析过程</h2>
+          <span>{run.nodes.filter((n) => n.kind === 'reason').length} 轮</span>
+        </div>
+        {run.nodes
+          .filter((n) => n.kind !== 'source' && n.kind !== 'context')
+          .map((node) => {
+            const Icon = icons[node.kind] || ScanSearch;
+            const waiting =
+              run.status === 'paused' && run.activeNodeId === node.id;
+            const status = (
+              <span className={`status status-${node.status}`}>
+                {node.status === 'running' ? (
+                  <LoaderCircle size={12} className="spin" />
+                ) : waiting ? (
+                  <CirclePause size={12} />
+                ) : null}
+                {statusLabels[node.status]}
+              </span>
+            );
+            const content = (
+              <>
+                {node.kind === 'reason' &&
+                  (node.payload.text ? (
+                    <AnalysisText
+                      text={node.payload.text.replace(/^\[.*?\]\s*/, '')}
+                    />
+                  ) : (
+                    <p className="pending-text">
+                      {waiting ? '准备继续分析' : '正在分析数据…'}
+                    </p>
+                  ))}
+                {node.payload.finalAttempt && (
+                  <div className="notice">轮次上限后的最终尝试 · 待验证</div>
                 )}
                 {node.kind === 'query' && (
                   <Query
-                    key={`${node.id}-${waiting}`}
                     node={node}
                     waiting={waiting}
                     busy={busy}
-                    execute={(sql) => onContinue(sql)}
+                    sql={drafts[node.id]?.sql ?? node.payload.sql ?? ''}
+                    onEdit={(sql) => onEdit(node.id, { sql })}
+                    execute={() =>
+                      onContinue(drafts[node.id]?.sql ?? node.payload.sql)
+                    }
                   />
                 )}
                 {node.kind === 'result' && (
                   <>
                     {node.payload.truncated && (
                       <div className="notice">
-                        返回结果已截断（{node.payload.truncatedBy}
-                        ），不能视为全量明细。
+                        已达返回上限 · 仅显示部分结果
                       </div>
                     )}
                     <DataTable
@@ -243,58 +225,28 @@ export default function Notebook({
                     >
                       <CheckCircle2 size={14} />
                       {node.payload.completionReason === 'confirmed'
-                        ? '模型已完成检查 · 请结合原始证据复核'
-                        : '已执行 · 验证尚未完成'}
+                        ? '已完成模型检查'
+                        : '执行完成 · 尚未验证'}
                     </div>
-                    <div className="prose notebook-prose">
-                      {node.payload.text}
-                    </div>
+                    <AnalysisText text={node.payload.text || ''} />
                   </>
                 )}
                 {node.kind === 'chart' && (
-                  <button
-                    className="button secondary"
-                    onClick={() => onSelect(node.id)}
-                  >
-                    查看图表与来源 <ArrowUpRight size={14} />
-                  </button>
+                  <>
+                    {node.payload.truncated && (
+                      <div className="notice">仅显示部分结果</div>
+                    )}
+                    <Bars node={node} />
+                  </>
                 )}
                 {node.payload.error && (
-                  <div className="notice error-notice">
+                  <div role="alert" className="notice error-notice">
                     {node.payload.error.message}
                   </div>
                 )}
-                <div className="step-bottom">
-                  <span className="mono">
-                    {node.id}
-                    {node.duration !== undefined
-                      ? ` · ${(node.duration / 1000).toFixed(2)}s`
-                      : ''}
-                  </span>
-                  <div>
-                    {node.parents.map((id) => (
-                      <button
-                        key={id}
-                        title={`来源 ${id}`}
-                        onClick={() => onSelect(id)}
-                      >
-                        ↳ {id}
-                      </button>
-                    ))}
-                    {node.checkpoint &&
-                      !['running', 'paused', 'pausing'].includes(
-                        run.status,
-                      ) && (
-                        <button onClick={() => onFork(node.id)} disabled={busy}>
-                          <GitBranch size={12} />
-                          从此处重跑
-                        </button>
-                      )}
-                  </div>
-                </div>
                 {waiting && node.kind !== 'query' && (
                   <div className="inline-actions">
-                    <span>已到达执行检查点。</span>
+                    <span>等待执行</span>
                     <button
                       className="button primary"
                       disabled={busy}
@@ -305,24 +257,103 @@ export default function Notebook({
                     </button>
                   </div>
                 )}
-              </div>
-            </article>
-          );
-        })}
+                <div className="step-bottom">
+                  <div>
+                    {node.duration !== undefined && (
+                      <span className="step-duration">
+                        <Clock3 size={11} />
+                        {(node.duration / 1000).toFixed(2)} s
+                      </span>
+                    )}
+                    {node.inherited && <span>来自原分支</span>}
+                  </div>
+                  <div>
+                    {node.parents.length > 0 && (
+                      <button onClick={() => onSelect(node.id)}>
+                        <Layers2 size={12} />
+                        {node.parents.length} 条依据
+                      </button>
+                    )}
+                    {node.checkpoint &&
+                      !['running', 'paused', 'pausing'].includes(
+                        run.status,
+                      ) && (
+                        <button
+                          className="rerun-action"
+                          onClick={() => onFork(node.id)}
+                          disabled={busy}
+                        >
+                          <GitBranch size={12} />
+                          重跑
+                        </button>
+                      )}
+                  </div>
+                </div>
+              </>
+            );
+            return (
+              <article
+                key={node.id}
+                id={`step-${node.id}`}
+                className={`notebook-step kind-${node.kind} ${
+                  selected === node.id ? 'focused' : ''
+                } ${waiting ? 'waiting' : ''}`}
+              >
+                <div className="step-gutter">
+                  <span className="mono">
+                    {String(node.sequence + 1).padStart(2, '0')}
+                  </span>
+                  <i />
+                </div>
+                {node.kind === 'reason' ? (
+                  <details
+                    className="step-content reason-step"
+                    open={waiting || node.status === 'running'}
+                  >
+                    <summary>
+                      <Icon size={15} />
+                      <strong>{node.title}</strong>
+                      {status}
+                      <ChevronRight size={14} className="disclosure-chevron" />
+                    </summary>
+                    <div className="reason-content">{content}</div>
+                  </details>
+                ) : (
+                  <div className="step-content">
+                    <div className="step-heading">
+                      <button
+                        className="step-name"
+                        onClick={() => onSelect(node.id)}
+                      >
+                        <Icon size={16} />
+                        <strong>{node.title}</strong>
+                      </button>
+                      <div className="step-tools">
+                        {status}
+                        <button
+                          className="icon-button"
+                          title="查看详情"
+                          aria-label={`查看 ${node.title} 的证据详情`}
+                          onClick={() => onSelect(node.id)}
+                        >
+                          <ArrowUpRight size={15} />
+                        </button>
+                      </div>
+                    </div>
+                    {content}
+                  </div>
+                )}
+              </article>
+            );
+          })}
         {['running', 'pausing'].includes(run.status) && (
           <div className="notebook-tail">
-            <LoaderCircle size={15} className="spin" />
+            <LoaderCircle size={14} className="spin" />
             <span>
-              {run.status === 'pausing'
-                ? '等待当前步骤完成后暂停…'
-                : '分析仍在继续，新的证据将出现在这里。'}
+              {run.status === 'pausing' ? '完成当前步骤后暂停…' : '分析中…'}
             </span>
           </div>
         )}
-        <div className="record-footer">
-          AVA LOOP <span>·</span> CSV SNAPSHOT <span>·</span> {run.nodes.length}{' '}
-          EVIDENCE NODES
-        </div>
       </div>
     </div>
   );

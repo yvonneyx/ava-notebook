@@ -60,11 +60,15 @@ const Card = memo(
         ? node.payload.schema?.map((c: any) => c.name).join(' · ')
         : node.kind === 'conclusion'
         ? node.payload.completionReason === 'confirmed'
-          ? '已完成模型检查，点击查看依据'
+          ? '已完成模型检查'
           : '已执行，验证尚未完成'
         : node.payload.action
-        ? node.payload.text?.replace(/^\[.*?\]\s*/, '')
-        : '查看输入、结果与执行记录';
+        ? node.payload.text?.replace(/^\[.*?\]\s*/, '').replace(/```\w*/g, '')
+        : node.kind === 'chart'
+        ? `${node.payload.rows?.length || 0} 个分组`
+        : node.kind === 'context'
+        ? '字段类型与质量统计'
+        : '等待模型响应';
     return (
       <div
         role="button"
@@ -199,7 +203,6 @@ export default function Graph({
       fitViewOptions={{ padding: 0.3, maxZoom: 0.95 }}
       minZoom={0.2}
       maxZoom={1.5}
-      proOptions={{ hideAttribution: true }}
     >
       <Background color="#d8dce2" gap={22} size={1} />
       <Controls showInteractive={false} position="bottom-left" />
