@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import type { Evidence, Run } from './types';
 import { statusLabels } from './types';
-import { Bars, DataTable } from './Detail';
+import EvidenceViews from './EvidenceViews';
 import AnalysisText from './AnalysisText';
 
 const icons: Record<string, typeof Database> = {
@@ -50,7 +50,13 @@ function Query({
     <>
       <div className="code-caption">
         <span className="code-language">SQL</span>
-        <span>{waiting ? '执行前暂停' : 'DuckDB'}</span>
+        <span>
+          {sql !== node.payload.sql
+            ? '修改草稿 · 尚未执行'
+            : waiting
+            ? '执行前暂停'
+            : 'DuckDB'}
+        </span>
       </div>
       {waiting ? (
         <textarea
@@ -71,24 +77,8 @@ function Query({
         />
       ) : (
         <pre className="inline-code">
-          <code>{node.payload.sql}</code>
+          <code>{sql}</code>
         </pre>
-      )}
-      {waiting && (
-        <div className="inline-actions">
-          <span>
-            <CirclePause size={13} />
-            等待运行
-          </span>
-          <button
-            className="button primary"
-            disabled={busy || !sql.trim()}
-            onClick={execute}
-          >
-            <Play size={13} />
-            {sql !== node.payload.sql ? '应用并运行' : '运行查询'}
-          </button>
-        </div>
       )}
     </>
   );
@@ -192,31 +182,6 @@ export default function Notebook({
                 {node.payload.finalAttempt && (
                   <div className="notice">轮次上限后的最终尝试 · 待验证</div>
                 )}
-                {node.kind === 'query' && (
-                  <Query
-                    node={node}
-                    waiting={waiting}
-                    busy={busy}
-                    sql={drafts[node.id]?.sql ?? node.payload.sql ?? ''}
-                    onEdit={(sql) => onEdit(node.id, { sql })}
-                    execute={() =>
-                      onContinue(drafts[node.id]?.sql ?? node.payload.sql)
-                    }
-                  />
-                )}
-                {node.kind === 'result' && (
-                  <>
-                    {node.payload.truncated && (
-                      <div className="notice">
-                        已达返回上限 · 仅显示部分结果
-                      </div>
-                    )}
-                    <DataTable
-                      rows={node.payload.data || []}
-                      columns={node.payload.schema?.map((c: any) => c.name)}
-                    />
-                  </>
-                )}
                 {node.kind === 'conclusion' && (
                   <>
                     <div
@@ -234,29 +199,64 @@ export default function Notebook({
                     <AnalysisText text={node.payload.text || ''} />
                   </>
                 )}
-                {node.kind === 'chart' && (
-                  <>
-                    {node.payload.truncated && (
-                      <div className="notice">仅显示部分结果</div>
-                    )}
-                    <Bars node={node} />
-                  </>
-                )}
+                <EvidenceViews
+                  node={node}
+                  run={run}
+                  onSelect={onSelect}
+                  sqlModified={
+                    node.kind === 'query' &&
+                    drafts[node.id]?.sql !== undefined &&
+                    drafts[node.id].sql !== node.payload.sql
+                  }
+                  sqlPane={
+                    node.kind === 'query' ? (
+                      <Query
+                        node={node}
+                        waiting={waiting}
+                        busy={busy}
+                        sql={drafts[node.id]?.sql ?? node.payload.sql ?? ''}
+                        onEdit={(sql) => onEdit(node.id, { sql })}
+                        execute={() =>
+                          onContinue(drafts[node.id]?.sql ?? node.payload.sql)
+                        }
+                      />
+                    ) : undefined
+                  }
+                />
                 {node.payload.error && (
                   <div role="alert" className="notice error-notice">
                     {node.payload.error.message}
                   </div>
                 )}
-                {waiting && node.kind !== 'query' && (
+                {waiting && (
                   <div className="inline-actions">
                     <span>等待执行</span>
                     <button
                       className="button primary"
-                      disabled={busy}
-                      onClick={() => onContinue()}
+                      disabled={
+                        busy ||
+                        (node.kind === 'query' &&
+                          !(
+                            drafts[node.id]?.sql ??
+                            node.payload.sql ??
+                            ''
+                          ).trim())
+                      }
+                      onClick={() =>
+                        onContinue(
+                          node.kind === 'query'
+                            ? drafts[node.id]?.sql ?? node.payload.sql
+                            : undefined,
+                        )
+                      }
                     >
                       <Play size={13} />
-                      继续分析
+                      {node.kind === 'query'
+                        ? drafts[node.id]?.sql !== undefined &&
+                          drafts[node.id].sql !== node.payload.sql
+                          ? '应用并运行'
+                          : '运行查询'
+                        : '继续分析'}
                     </button>
                   </div>
                 )}

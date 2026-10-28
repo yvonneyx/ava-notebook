@@ -1,4 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
+import { DataTable } from './DataViews';
+import EvidenceViews from './EvidenceViews';
 import AnalysisText from './AnalysisText';
 import {
   X,
@@ -6,114 +8,11 @@ import {
   Play,
   Copy,
   Check,
-  ChartColumn,
   ChevronDown,
   FileCode2,
 } from 'lucide-react';
 import { kindLabels, statusLabels, isActive } from './types';
 import type { Evidence, Run, Mode } from './types';
-export function DataTable({
-  rows,
-  columns,
-}: {
-  rows: Record<string, unknown>[];
-  columns?: string[];
-}) {
-  const [page, setPage] = useState(0);
-  const names = columns || Object.keys(rows[0] || {});
-  const numeric = new Set(
-    names.filter((name) => rows.some((row) => typeof row[name] === 'number')),
-  );
-  return (
-    <>
-      <div className="table-scroll">
-        <table>
-          <thead>
-            <tr>
-              {names.map((name) => (
-                <th
-                  key={name}
-                  className={numeric.has(name) ? 'numeric' : undefined}
-                >
-                  {name}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {!rows.length && (
-              <tr>
-                <td colSpan={names.length || 1} className="table-empty">
-                  无匹配结果
-                </td>
-              </tr>
-            )}
-            {rows.slice(page * 20, page * 20 + 20).map((row, index) => (
-              <tr key={index}>
-                {names.map((name) => (
-                  <td
-                    key={name}
-                    className={numeric.has(name) ? 'numeric' : undefined}
-                  >
-                    {row[name] === null ? (
-                      <span className="muted">null</span>
-                    ) : (
-                      String(row[name] ?? '')
-                    )}
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      {rows.length > 20 && (
-        <div className="pagination">
-          <button disabled={!page} onClick={() => setPage(page - 1)}>
-            上一页
-          </button>
-          <span>
-            {page + 1} / {Math.ceil(rows.length / 20)}
-          </span>
-          <button
-            disabled={(page + 1) * 20 >= rows.length}
-            onClick={() => setPage(page + 1)}
-          >
-            下一页
-          </button>
-        </div>
-      )}
-    </>
-  );
-}
-export function Bars({ node }: { node: Evidence }) {
-  const rows = node.payload.rows as { label: string; value: number }[];
-  const max = Math.max(...rows.map((r) => Math.abs(r.value)), 1);
-  return (
-    <div
-      className="bars"
-      role="img"
-      aria-label={`${node.title}柱状图，${rows
-        .map((row) => `${row.label}：${row.value}`)
-        .join('；')}`}
-    >
-      {rows.map((row, i) => (
-        <div className="bar-row" key={i}>
-          <span title={row.label}>{row.label}</span>
-          <div className="bar-track">
-            <i
-              className={row.value < 0 ? 'negative' : ''}
-              style={{
-                width: `${Math.max((Math.abs(row.value) / max) * 100, 1)}%`,
-              }}
-            />
-          </div>
-          <b>{row.value.toLocaleString()}</b>
-        </div>
-      ))}
-    </div>
-  );
-}
 export default function Detail({
   node,
   draft,
@@ -146,17 +45,6 @@ export default function Detail({
   const sql = draft.sql ?? node.payload.sql ?? '';
   const instruction = draft.instruction ?? '';
   const [copied, setCopied] = useState(false);
-  const [chartX, setChartX] = useState('');
-  const [chartY, setChartY] = useState('');
-  useEffect(() => {
-    const columns = node.payload.schema || [];
-    setChartX(columns[0]?.name || '');
-    setChartY(
-      columns.find(
-        (c: any) => typeof node.payload.data?.[0]?.[c.name] === 'number',
-      )?.name || '',
-    );
-  }, [node.id]);
   const waiting = run.status === 'paused' && run.activeNodeId === node.id;
   const canEdit = waiting || (!isActive(run) && !!node.checkpoint);
   const decision = {
@@ -217,8 +105,6 @@ export default function Detail({
                 <span>快照大小</span>
               </div>
             </div>
-            <h3>数据预览</h3>
-            <DataTable rows={node.payload.preview || []} />
             <details>
               <summary>数据指纹</summary>
               <p className="fingerprint mono">{node.payload.hash}</p>
@@ -270,108 +156,6 @@ export default function Detail({
             )}
           </>
         )}
-        {node.kind === 'query' && (
-          <>
-            <div className="section-label">
-              <h3>
-                {waiting || node.status === 'ready'
-                  ? '待执行 SQL'
-                  : '实际执行 SQL'}
-              </h3>
-              <button
-                className="icon-button"
-                aria-label="复制 SQL"
-                onClick={async () => {
-                  try {
-                    await navigator.clipboard.writeText(sql);
-                    setCopied(true);
-                    setTimeout(() => setCopied(false), 1500);
-                  } catch {
-                    setCopied(false);
-                  }
-                }}
-              >
-                {copied ? <Check size={14} /> : <Copy size={14} />}
-              </button>
-            </div>
-            <textarea
-              className="code-editor mono"
-              aria-label="SQL 编辑器"
-              value={sql}
-              onChange={(e) => onEdit({ sql: e.target.value })}
-              readOnly={!canEdit}
-              spellCheck={false}
-            />
-            {node.payload.originalSQL && (
-              <details>
-                <summary>原始 SQL</summary>
-                <pre>{node.payload.originalSQL}</pre>
-              </details>
-            )}
-          </>
-        )}
-        {node.kind === 'result' && (
-          <>
-            {node.payload.truncated && (
-              <div className="notice">
-                结果已截断：
-                {node.payload.truncatedBy === 'maxRows'
-                  ? '达到行数限制'
-                  : '达到字节限制'}
-                。仅显示部分结果。
-              </div>
-            )}
-            <DataTable
-              rows={node.payload.data || []}
-              columns={node.payload.schema?.map((c: any) => c.name)}
-            />
-            <details className="chart-options">
-              <summary>
-                <ChartColumn size={14} />
-                生成图表
-              </summary>
-              <div className="chart-controls">
-                <label>
-                  分类
-                  <select
-                    value={chartX}
-                    onChange={(e) => setChartX(e.target.value)}
-                  >
-                    {node.payload.schema?.map((c: any) => (
-                      <option key={c.name}>{c.name}</option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  数值
-                  <select
-                    value={chartY}
-                    onChange={(e) => setChartY(e.target.value)}
-                  >
-                    <option value="">选择数值列</option>
-                    {node.payload.schema
-                      ?.filter(
-                        (c: any) =>
-                          typeof node.payload.data?.[0]?.[c.name] === 'number',
-                      )
-                      .map((c: any) => (
-                        <option key={c.name}>{c.name}</option>
-                      ))}
-                  </select>
-                </label>
-              </div>
-              <button
-                className="button secondary full"
-                disabled={busy || !chartY}
-                onClick={() => onChart(node.id, chartX, chartY)}
-              >
-                <ChartColumn size={15} />
-                生成柱状图
-              </button>
-              <p className="hint">使用前 20 行结果</p>
-            </details>
-          </>
-        )}
         {node.kind === 'conclusion' && (
           <>
             <div
@@ -388,16 +172,58 @@ export default function Detail({
             <AnalysisText text={node.payload.text || '等待分析完成'} />
           </>
         )}
-        {node.kind === 'chart' && (
-          <>
-            {node.payload.truncated && (
-              <div className="notice">
-                此图仅展示部分结果，请结合原始查询判断。
-              </div>
-            )}
-            <Bars node={node} />
-          </>
-        )}
+        <EvidenceViews
+          node={node}
+          run={run}
+          busy={busy}
+          onSelect={onSelect}
+          onChart={onChart}
+          sqlModified={node.kind === 'query' && sql !== node.payload.sql}
+          sqlPane={
+            node.kind === 'query' ? (
+              <>
+                <div className="section-label">
+                  <h3>
+                    {sql !== node.payload.sql
+                      ? '修改草稿 · 尚未执行'
+                      : waiting || node.status === 'ready'
+                      ? '待执行 SQL'
+                      : '实际执行 SQL'}
+                  </h3>
+                  <button
+                    className="icon-button"
+                    aria-label="复制 SQL"
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(sql);
+                        setCopied(true);
+                        setTimeout(() => setCopied(false), 1500);
+                      } catch {
+                        setCopied(false);
+                      }
+                    }}
+                  >
+                    {copied ? <Check size={14} /> : <Copy size={14} />}
+                  </button>
+                </div>
+                <textarea
+                  className="code-editor mono"
+                  aria-label="SQL 编辑器"
+                  value={sql}
+                  onChange={(e) => onEdit({ sql: e.target.value })}
+                  readOnly={!canEdit}
+                  spellCheck={false}
+                />
+                {node.payload.originalSQL && (
+                  <details>
+                    <summary>原始 SQL</summary>
+                    <pre>{node.payload.originalSQL}</pre>
+                  </details>
+                )}
+              </>
+            ) : undefined
+          }
+        />
         {node.parents.length > 0 && (
           <div className="evidence-links">
             <h3>输入与来源</h3>

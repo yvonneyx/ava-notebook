@@ -41,7 +41,8 @@ import { api, post } from './api';
 import type { Run, Source, Mode, Session, Evidence } from './types';
 import { statusLabels, isActive } from './types';
 import Notebook from './Notebook';
-import Detail, { DataTable } from './Detail';
+import Detail from './Detail';
+import { DataTable } from './DataViews';
 const Graph = lazy(() => import('./Graph'));
 const modeOptions = (
   <>
