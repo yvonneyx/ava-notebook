@@ -1,6 +1,6 @@
 # 开发与运行说明
 
-[返回项目介绍](../README.md)
+[返回项目介绍](../README.md) · [目录与依赖边界](architecture.md)
 
 ## 本地完整版本
 
@@ -92,7 +92,7 @@ await ava.analyze(question, {
 
 ## 销售案例数据
 
-首页「探索销售经营案例」导入 `sales-case.csv`、`sales-semantic.yaml` 和 `sales-question.txt`，提供 1,416 行合成销售数据、业务口径和分析问题。worker 在加载 CSV、结构、语义和质量统计后执行所选策略。普通 CSV 不会自动套用这份语义。
+首页「探索销售经营案例」导入 `examples/sales/` 下的 `sales-case.csv`、`sales-semantic.yaml` 和 `sales-question.txt`，提供 1,416 行合成销售数据、业务口径和分析问题。worker 在加载 CSV、结构、语义和质量统计后执行所选策略。普通 CSV 不会自动套用这份语义。
 
 数据覆盖退款空值、零访问日、月份天数差异、正负贡献抵消，以及广告后经营贡献和净利润的区别。案例文件不预写 SQL 或答案；问题较复杂时，direct 的单次查询可能无法覆盖所有分析要求，应结合返回的证据局限判断结果。
 
@@ -100,7 +100,7 @@ await ava.analyze(question, {
 
 ### 经典案例回顾
 
-首页预装「销售额高就更赚钱吗」（Direct 快速模式）、「各地区销售额对比」和「2 月业绩下滑归因」（Loop 探索模式）。快速案例用一次商品汇总查询比较销售额、利润、利润率及利润占比，SQL 与总结是基于查询结果编写的预设示例，不冒充真实模型调用；其余案例沿用预录模型回应。`data/classic-cases/recordings.json` 保存各案例的策略、回应、输入数据和说明；生成脚本让当前 AVA 实际执行 SQL，`src/data/cases.json` 保存完整新事件、节点和结论。服务首次启动导入尚不存在的案例及其 CSV 快照，重复启动不会覆盖已保存图表；案例与个人历史分开展示。
+首页预装「销售额高就更赚钱吗」（Direct 快速模式）、「各地区销售额对比」和「2 月业绩下滑归因」（Loop 探索模式）。快速案例用一次商品汇总查询比较销售额、利润、利润率及利润占比，SQL 与总结是基于查询结果编写的预设示例，不冒充真实模型调用；其余案例沿用预录模型回应。`examples/classic/recordings.json` 保存各案例的策略、回应、输入数据和说明；生成脚本让当前 AVA 实际执行 SQL，`examples/classic/generated/cases.json` 保存完整新事件、节点和结论。服务首次启动导入尚不存在的案例及其 CSV 快照，重复启动不会覆盖已保存图表；案例与个人历史分开展示。
 
 重新生成案例：`node scripts/generate-classic-cases.mjs`，无需模型密钥。脚本按各案例声明的 Direct 或 Loop 策略执行，全部完成后才更新内置记录。它不读取旧事件或检查点，也不会在用户打开页面时调用模型。
 

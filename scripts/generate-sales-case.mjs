@@ -97,8 +97,9 @@ for (let month = 1; month <= 2; month++) {
   }
 }
 const headers = Object.keys(rows[0]);
+await mkdir('examples/sales', { recursive: true });
 await writeFile(
-  'sales-case.csv',
+  'examples/sales/sales-case.csv',
   [
     headers.join(','),
     ...rows.map((row) => headers.map((key) => row[key] ?? '').join(',')),
@@ -248,9 +249,9 @@ const semantic = {
     },
   ],
 };
-await writeFile('sales-semantic.yaml', stringify(semantic, { lineWidth: 100 }));
+await writeFile('examples/sales/sales-semantic.yaml', stringify(semantic, { lineWidth: 100 }));
 await writeFile(
-  'sales-question.txt',
+  'examples/sales/sales-question.txt',
   '2025 年 2 月是否只是月份变短才显得业绩下滑？请先核验数据和经营贡献口径，比较 1 月、2 月的总量和日均净销售额、广告后经营贡献，再逐层找到拉低可比日均贡献的主要商品×地区×渠道组合，区分销量、折扣退款、广告成本和库存信号。给出有数据支持的优先处理建议及仍待验证的假设。按证据决定下一步，不预设固定查询；每轮说明目的，在拿到结果后总结发现，最后核对分项与整体是否一致。\n',
 );
 

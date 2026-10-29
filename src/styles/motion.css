@@ -1,0 +1,152 @@
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes appear {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.reason-step[open] .disclosure-chevron {
+  transform: rotate(90deg);
+}
+button:not(:disabled),
+a.button,
+.data-step {
+  transition: background 160ms, border-color 160ms, box-shadow 180ms,
+    transform 180ms;
+}
+button:not(:disabled):active,
+a.button:active {
+  transform: scale(0.975);
+}
+.disclosure-chevron {
+  transition: transform 200ms;
+}
+details[open] > :not(summary) {
+  animation: appear 200ms ease-out;
+}
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes backdrop-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes bar-in {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+@keyframes fade {
+  from {
+    filter: blur(3px);
+    opacity: 0;
+  }
+  to {
+    filter: blur(0);
+    opacity: 1;
+  }
+}
+@keyframes slide {
+  from {
+    translate: var(--slide-offset);
+  }
+  to {
+    translate: 0;
+  }
+}
+::view-transition-old(.fade-out) {
+  animation: var(--duration-exit) ease-in both fade reverse;
+}
+::view-transition-new(.fade-in) {
+  animation: var(--duration-enter) ease-out var(--duration-exit) both fade;
+}
+::view-transition-new(.slide-from-right),
+::view-transition-new(.nav-forward) {
+  --slide-offset: 60px;
+  animation: var(--duration-enter) ease-out var(--duration-exit) both fade,
+    var(--duration-move) ease-in-out both slide;
+}
+::view-transition-old(.slide-to-right),
+::view-transition-old(.nav-back) {
+  --slide-offset: 60px;
+  animation: var(--duration-exit) ease-in both fade reverse,
+    var(--duration-move) ease-in-out both slide reverse;
+}
+::view-transition-old(.nav-forward) {
+  --slide-offset: -60px;
+  animation: var(--duration-exit) ease-in both fade reverse,
+    var(--duration-move) ease-in-out both slide reverse;
+}
+::view-transition-new(.nav-back) {
+  --slide-offset: -60px;
+  animation: var(--duration-enter) ease-out var(--duration-exit) both fade,
+    var(--duration-move) ease-in-out both slide;
+}
+::view-transition-group(.morph) {
+  animation-duration: var(--duration-move);
+}
+::view-transition-image-pair(.morph) {
+  animation-name: via-blur;
+}
+@keyframes via-blur {
+  30% {
+    filter: blur(3px);
+  }
+}
+::view-transition-group(persistent-sidebar),
+::view-transition-group(persistent-topbar) {
+  animation: none;
+  z-index: 100;
+}
+::view-transition-group(persistent-topbar) {
+  clip-path: inset(
+    0 round var(--panel-inner-radius) var(--panel-inner-radius) 0 0
+  );
+}
+::view-transition-group(.page-surface) {
+  clip-path: inset(
+    0 round 0 0 var(--panel-inner-radius) var(--panel-inner-radius)
+  );
+}
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(*),
+  ::view-transition-new(*),
+  ::view-transition-group(*) {
+    animation-duration: 0s !important;
+    animation-delay: 0s !important;
+  }
+  * {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    animation-delay: 0s !important;
+    transition: none !important;
+  }
+}

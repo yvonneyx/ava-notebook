@@ -39,6 +39,6 @@
     "build:static": "tsc --noEmit && vite build --mode static --outDir dist-static",
     "preview:static": "vite preview --outDir dist-static",
     "start": "node --env-file-if-exists=.env server/index.mjs",
-    "test": "node --test tests/*.test.mjs"
+    "test": "node --test tests/frontend/*.test.mjs tests/server/*.test.mjs tests/integration/*.test.mjs"
   }
 }

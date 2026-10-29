@@ -1,0 +1,141 @@
+.app-shell {
+  display: flex;
+  height: 100dvh;
+  overflow: hidden;
+  padding: 12px 12px 12px 0;
+  gap: 0;
+}
+.main {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border: 1px solid #e2eaf0;
+  border-radius: var(--panel-radius);
+  overflow: hidden;
+  box-shadow: 0 8px 36px #24435a06;
+}
+.topbar {
+  flex-shrink: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  height: 56px;
+  padding: 0 26px;
+  gap: 16px;
+  color: #74818b;
+}
+.topbar > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.topbar strong {
+  font-weight: 500;
+  color: #45545f;
+}
+.header-location {
+  min-width: 0;
+  flex: 1;
+}
+.header-context {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.header-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.header-actions {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.topbar .text-button {
+  font-size: 11px;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+@media (max-width: 560px) {
+  .topbar > .header-location,
+  .topbar > .header-actions {
+    gap: 7px;
+  }
+}
+@media (max-width: 560px) {
+  .topbar .text-button {
+    font-size: 10px;
+  }
+}
+.topbar .sidebar-toggle,
+.sidebar-scrim {
+  display: none;
+}
+.global-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 15px;
+  padding: 10px 25px;
+  background: #fff3f1;
+  color: #a34e45;
+  border-bottom: 1px solid #f0dcd7;
+  font-size: 12px;
+  line-height: 1.6;
+}
+@media (max-width: 800px) {
+  .topbar .sidebar-toggle {
+    display: inline-flex;
+    margin-left: -6px;
+  }
+}
+@media (max-width: 800px) {
+  .topbar {
+    padding: 0 20px;
+  }
+}
+@media (max-width: 800px) {
+  .export-button {
+    font-size: 0;
+    padding: 6px 8px;
+    gap: 0;
+  }
+}
+@media (max-width: 800px) {
+  .sidebar-open > .main {
+    margin-left: 62px;
+  }
+}
+@media (max-width: 560px) {
+  .sidebar-open > .main {
+    margin-left: 0;
+  }
+}
+@media (max-width: 560px) {
+  .topbar {
+    height: 48px;
+    padding: 0 16px;
+  }
+}
+@media (max-width: 800px) {
+  .app-shell {
+    padding: 8px 8px 8px 0;
+    gap: 0;
+  }
+}
+@media (max-width: 560px) {
+  .app-shell {
+    padding: 0;
+  }
+}
+@media (max-width: 560px) {
+  .main {
+    border: 0;
+  }
+}

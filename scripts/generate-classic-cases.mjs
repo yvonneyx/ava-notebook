@@ -2,13 +2,13 @@ import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { inspectCSV, digest, atomicJSON } from '../server/store.mjs';
+import { inspectCSV, digest, atomicJSON } from '../server/storage/index.mjs';
 import {
   putNode,
   applyEvent,
   completeRun,
   eventNodeId,
-} from '../server/evidence.mjs';
+} from '../server/analysis/evidence.mjs';
 const require = createRequire(import.meta.url);
 const { AVA } = require('@antv/ava');
 const { MockLanguageModelV4 } = createRequire(require.resolve('@antv/ava'))(
@@ -16,7 +16,7 @@ const { MockLanguageModelV4 } = createRequire(require.resolve('@antv/ava'))(
 );
 const recordings = JSON.parse(
   await readFile(
-    new URL('../data/classic-cases/recordings.json', import.meta.url),
+    new URL('../examples/classic/recordings.json', import.meta.url),
     'utf8',
   ),
 );
@@ -116,6 +116,8 @@ for (const recording of recordings) {
   }
 }
 await atomicJSON(
-  fileURLToPath(new URL('../src/data/cases.json', import.meta.url)),
+  fileURLToPath(
+    new URL('../examples/classic/generated/cases.json', import.meta.url),
+  ),
   cases,
 );

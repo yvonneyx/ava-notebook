@@ -1,4 +1,4 @@
-import { applyEvent, completeRun } from '../../server/evidence.mjs';
+import { applyEvent, completeRun } from '../../server/analysis/evidence.mjs';
 
 export function emit(
   run,

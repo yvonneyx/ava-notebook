@@ -20,4 +20,4 @@
 
 ![AVA Notebook 证据图谱](https://mdn.alipayobjects.com/huamei_aphk1k/afts/img/A*JoFyTKR_RKkAAAAATOAAAAgAegfkAQ/original)
 
-两种策略统一消费新版 AVA 事件，展示步骤、查询、结果和依赖。旧格式记录不迁移，不提供暂停与检查点分支。[开发与运行说明](docs/development.md)。
+两种策略统一消费新版 AVA 事件，展示步骤、查询、结果和依赖。旧格式记录不迁移，不提供暂停与检查点分支。[开发与运行说明](docs/development.md) · [目录与依赖边界](docs/architecture.md)。
