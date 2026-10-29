@@ -1,15 +1,17 @@
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { createContext, runInContext } from 'node:vm';
 import { createServer } from 'vite';
 
-let server, readCSV;
+let server, readCSV, chartDocument;
 before(async () => {
   server = await createServer({
     server: { middlewareMode: true, hmr: false, ws: false, watch: null },
     appType: 'custom',
   });
   ({ readCSV } = await server.ssrLoadModule('/src/runtime/csv.ts'));
+  ({ chartDocument } = await server.ssrLoadModule('/src/ui/chart-document.ts'));
 });
 after(async () => {
   await server?.close();
@@ -44,4 +46,35 @@ test('browser CSV reader preserves quoted cells and enforces import boundaries',
     new File(['a\n' + '1\n'.repeat(100001)], 'rows.csv'),
   ])
     await assert.rejects(() => readCSV(invalid));
+});
+
+test('chart JSON remains inert script data and preserves prototype-like column names', () => {
+  const config = JSON.parse(
+    '{"type":"table","data":[{"__proto__":{"value":1},"note":"</script><img src=x onerror=alert(1)>"}]}',
+  );
+  const html = chartDocument(
+    config,
+    'https://notebook.test/gpt-vis.js',
+    'test-nonce',
+  );
+  assert.ok(!html.includes('</script><img'));
+  assert.match(html, /default-src 'none'/);
+  let rendered;
+  const context = createContext({
+    GPTVis: {
+      GPTVis: class {
+        render(value) {
+          rendered = value;
+        }
+        destroy() {}
+      },
+    },
+    parent: { postMessage() {} },
+    addEventListener() {},
+    requestAnimationFrame: (callback) => callback(),
+  });
+  for (const [, script] of html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g))
+    if (script.trim()) runInContext(script, context);
+  assert.equal(JSON.stringify(rendered), JSON.stringify(config));
+  assert.ok(Object.hasOwn(rendered.data[0], '__proto__'));
 });

@@ -12,6 +12,18 @@ export type Source = {
     definition: Record<string, unknown>;
   };
 };
+export type Visualization = {
+  status:
+    | 'pending'
+    | 'ready'
+    | 'empty'
+    | 'failed'
+    | 'cancelled'
+    | 'interrupted';
+  chartType?: string;
+  config?: { type: string; [key: string]: unknown };
+  error?: string;
+};
 export type Evidence = {
   id: string;
   sequence: number;
@@ -23,6 +35,7 @@ export type Evidence = {
   stepId?: string;
   parentStepIds?: string[];
   duration?: number;
+  visualization?: Visualization;
 };
 export type Run = {
   id: string;

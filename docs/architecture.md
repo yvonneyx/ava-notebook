@@ -40,3 +40,7 @@ vendor/                       # 固定的完整 AVA npm 包
 Web Locks 标识仍在其他标签页运行的任务，刷新仅将失去锁的任务标为中断。独立锁串行化同一分析的图表保存与删除；BroadcastChannel 推送更新。保存失败时结束任务，页面内存暂留未保存证据供导出。模型配置和 Key 仅保留在页面内存。
 
 日常验证与限制见[开发说明](development.md#验证)。
+
+图表生成从每次成功且非空的 `queryend` 启动，独立 AVA 实例调用 visualize，避免图表事件混入分析步骤。分析完成后释放分析占用状态，Worker 等待图表完成再退出；任务锁仍保护对应记录，防止其他标签页把后台图表误判为中断。生成结果写入原结果节点的 `visualization` 字段，不复制其他步骤的数据。
+
+Chart 视图从 `EvidenceDataset.result` 获取配置，按需加载 `GeneratedChart`。GPT-Vis UMD 资源随页面同源发布，在沙箱 iframe 内只读取 JSON；不使用模型生成的 HTML，iframe 不访问父页面存储或网络服务。旧的手动图表节点保持兼容。

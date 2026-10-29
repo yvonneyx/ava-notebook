@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { lazy, Suspense, useId, useState } from 'react';
 import { Braces, Table2, ChartColumn, ArrowUpRight } from 'lucide-react';
 import type { Evidence, Run } from '../../../shared/contracts';
 import StatusLabel from '../../ui/StatusLabel';
@@ -11,6 +11,8 @@ import {
   chartPreview,
 } from '../../domain/evidence';
 import type { EvidenceDataset } from '../../domain/evidence';
+
+const GeneratedChart = lazy(() => import('../../ui/GeneratedChart'));
 
 type View = 'sql' | 'data' | 'chart';
 const views = [
@@ -145,6 +147,7 @@ export default function EvidenceViews({
   const datasets = scopedDatasets ?? evidenceDatasets(run, node);
   const dataset = datasets.find((item) => item.id === datasetId) || datasets[0];
   const query = dataset?.query;
+  const visualization = dataset?.result?.visualization;
   const pending = query
     ? query.status === 'failed'
       ? '查询失败，尚无结果数据'
@@ -253,7 +256,27 @@ export default function EvidenceViews({
             {dataset?.truncated && (
               <div className="notice">结果已截断，仅展示已保存的数据。</div>
             )}
-            {view === 'chart' && node.kind === 'chart' && !dataset ? (
+            {view === 'chart' && visualization ? (
+              visualization.status === 'ready' && visualization.config ? (
+                <Suspense
+                  fallback={<p className="view-empty">正在加载图表…</p>}
+                >
+                  <GeneratedChart config={visualization.config} />
+                </Suspense>
+              ) : (
+                <p className="view-empty" role="status">
+                  {visualization.status === 'pending'
+                    ? '图表正在异步生成，数据和分析可继续查看…'
+                    : visualization.status === 'empty'
+                    ? '这份结果不需要图表，可在 Data 查看'
+                    : visualization.status === 'failed'
+                    ? `图表生成失败：${
+                        visualization.error || '请重新分析后重试'
+                      }`
+                    : '图表生成已中断，可重新分析生成图表'}
+                </p>
+              )
+            ) : view === 'chart' && node.kind === 'chart' && !dataset ? (
               <>
                 <p className="view-data-note">
                   已保存图表 · 源结果不可用

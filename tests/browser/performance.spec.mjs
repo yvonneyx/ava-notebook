@@ -50,7 +50,7 @@ test('measure cold page and 100000-row CSV responsiveness on a 4x slower CPU', a
   await expect(page.locator('input[type=file]')).toBeEnabled();
   const readyMs = Date.now() - started;
   expect(
-    (await metrics(page)).resources.filter(({ name }) => /\.wasm/.test(name)),
+    (await metrics(page)).resources.filter(({ name }) => /\.wasm|index\.min-.*\.js/.test(name)),
   ).toHaveLength(0);
   const columns = [
     'region',

@@ -3,6 +3,7 @@ import { createServer } from 'node:http';
 
 let provider, baseURL;
 const requests = [];
+const delayedCharts = [];
 test.beforeAll(async () => {
   provider = createServer(async (request, response) => {
     const cors = !request.url.startsWith('/no-cors');
@@ -24,7 +25,14 @@ test.beforeAll(async () => {
     const body = JSON.parse(raw);
     const prompt = body.messages.map((message) => message.content).join('\n');
     requests.push({ auth: request.headers.authorization, prompt });
-    if (prompt.includes('hold-browser-test')) return;
+    if (
+      prompt.includes('hold-browser-test') ||
+      (prompt.includes('hold-summary-chart-test') &&
+        prompt.includes(
+          'Query result (including schema and truncation details):',
+        ))
+    )
+      return;
     if (prompt.includes('provider-error-test')) {
       response.writeHead(401, { 'Content-Type': 'application/json' });
       response.end(
@@ -32,11 +40,42 @@ test.beforeAll(async () => {
       );
       return;
     }
+    const advisor = prompt.startsWith('你是一个图表推荐专家');
+    const chart = prompt.startsWith('你是一个 GPT-Vis 可视化专家');
+    if (chart && prompt.includes('chart-failure-test')) {
+      response.writeHead(401, { 'Content-Type': 'application/json' });
+      response.end(
+        JSON.stringify({
+          error: { message: 'Invalid chart key browser-test-key' },
+        }),
+      );
+      return;
+    }
+    if (chart && prompt.includes('slow-chart-test'))
+      await new Promise((resolve) => delayedCharts.push(resolve));
+    const chartRows = chart
+      ? JSON.parse(prompt.split('**数据**:\n```json\n')[1].split('\n```')[0])
+      : [];
     const loop = prompt.includes('# 1. RESPONSE PROTOCOL');
     const iteration = (prompt.match(/Assistant:\n/g) || []).length;
-    const text = loop
+    const text = advisor
+      ? prompt.includes('chart-empty-test')
+        ? 'none'
+        : 'column'
+      : chart
+      ? JSON.stringify({
+          type: 'column',
+          title: 'Generated sales',
+          data: chartRows.map((row, i) => ({
+            category: row.region || `Row ${i + 1}`,
+            value: row.total ?? row.sales,
+          })),
+        })
+      : loop
       ? [
-          '[EXPLORE]\n```sql\nSELECT missing_column FROM data\n```\n```sql\nSELECT sales FROM data LIMIT 2\n```',
+          prompt.includes('many-chart-test')
+            ? '[EXPLORE]\n```sql\nSELECT sales FROM data LIMIT 1\n```\n```sql\nSELECT sales FROM data LIMIT 2\n```\n```sql\nSELECT sales FROM data WHERE sales > 5\n```'
+            : '[EXPLORE]\n```sql\nSELECT missing_column FROM data\n```\n```sql\nSELECT sales FROM data LIMIT 2\n```',
           '[SQL]\n```sql\nSELECT SUM(sales) AS total FROM data\n```',
           '[CONFIRM] Sales total is 10; verified against the source rows.',
         ][Math.min(iteration, 2)]
@@ -53,6 +92,8 @@ test.beforeAll(async () => {
       : prompt.includes('retry-browser-test') &&
         !prompt.includes('Previous DSL:')
       ? 'SELECT missing_column FROM data'
+      : prompt.includes('empty-result-chart-test')
+      ? 'SELECT sales FROM data WHERE 1=0'
       : 'SELECT SUM(sales) AS total FROM data';
     if (prompt.includes('cross-tab-completion'))
       await new Promise((resolve) => setTimeout(resolve, 2000));
@@ -76,6 +117,9 @@ test.beforeAll(async () => {
   });
   await new Promise((resolve) => provider.listen(0, '127.0.0.1', resolve));
   baseURL = `http://127.0.0.1:${provider.address().port}`;
+});
+test.afterEach(() => {
+  for (const resolve of delayedCharts.splice(0)) resolve();
 });
 test.afterAll(async () => {
   provider.closeAllConnections();
@@ -131,6 +175,7 @@ async function records(page, store = 'runs') {
   );
 }
 async function currentRecord(page, status) {
+  await expect(page).toHaveURL(/run=/);
   const id = new URL(page.url()).searchParams.get('run');
   await expect
     .poll(
@@ -211,7 +256,7 @@ test('AVA browser DuckDB executes real SQL, profiles, bounds results and rejects
   expect(result.after.data).toEqual([{ total: 10 }]);
 });
 
-test('production Notebook runs direct with retry, saves a chart, renders graph and restores records', async ({
+test('production Notebook runs direct with retry, generates a chart, renders graph and restores records', async ({
   page,
   context,
 }) => {
@@ -245,23 +290,16 @@ test('production Notebook runs direct with retry, saves a chart, renders graph a
     .last()
     .getByRole('tab', { name: 'Chart', exact: true })
     .click();
-  await page
-    .getByRole('complementary')
-    .last()
-    .getByLabel('图表分类列', { exact: true })
-    .selectOption('total');
-  await page
-    .getByRole('button', { name: '保存图表', exact: true })
-    .first()
-    .click();
   await expect
     .poll(
       async () =>
         (await records(page))
           .find((item) => item.id === run.id)
-          ?.nodes.filter((node) => node.kind === 'chart').length,
+          ?.nodes.find((item) => item.id === result.id)?.visualization?.status,
     )
-    .toBe(1);
+    .toBe('ready');
+  const chart = page.frameLocator('iframe[title="自动生成的图表"]').last();
+  await expect(chart.locator('canvas').first()).toBeVisible();
   const saved = (await records(page)).find((item) => item.id === run.id);
   const download = page.waitForEvent('download');
   await page.getByRole('button', { name: '导出证据', exact: true }).click();
@@ -269,6 +307,11 @@ test('production Notebook runs direct with retry, saves a chart, renders graph a
   const { readFile } = await import('node:fs/promises');
   const json = JSON.parse(await readFile(await exported.path(), 'utf8'));
   expect(json.run.events.length).toBeGreaterThan(0);
+  const visualization = json.run.nodes.find(
+    (item) => item.id === result.id,
+  ).visualization;
+  expect(visualization.config.data).toEqual([{ category: 'Row 1', value: 10 }]);
+  expect(visualization).not.toHaveProperty('html');
   expect(JSON.stringify(json)).not.toContain('browser-test-key');
   const url = page.url();
   await page.reload();
@@ -302,6 +345,18 @@ test('Loop explores, corrects SQL and verifies results', async ({
     true,
   );
   expect(run.result.data).toEqual([{ total: 10 }]);
+  await expect
+    .poll(async () =>
+      (await currentRecord(page, 'completed')).nodes
+        .filter((node) => node.kind === 'result')
+        .map((node) => node.visualization?.status),
+    )
+    .toEqual(['ready', 'ready']);
+  const saved = await currentRecord(page, 'completed');
+  for (const result of saved.nodes.filter((node) => node.kind === 'result'))
+    expect(result.visualization.config.data.map((row) => row.value)).toEqual(
+      result.payload.data.map((row) => row.total ?? row.sales),
+    );
   expect(
     requests.some((request) => request.auth === 'Bearer browser-test-key'),
   ).toBe(true);
@@ -507,12 +562,7 @@ test('two tabs saving charts cannot overwrite each other', async ({
   page,
   context,
 }) => {
-  await page.goto('/');
-  await configure(page);
-  await upload(page, 'two tabs charts');
-  await page.getByRole('button', { name: '开始分析', exact: true }).click();
-  await expect(page).toHaveURL(/run=/);
-  await currentRecord(page, 'completed');
+  await page.goto('/?run=case-product-profitability');
   const other = await context.newPage();
   await other.goto(page.url());
   async function selectChart(tab) {
@@ -522,9 +572,7 @@ test('two tabs saving charts cannot overwrite each other', async ({
       .click();
     const detail = tab.getByRole('complementary').last();
     await detail.getByRole('tab', { name: 'Chart', exact: true }).click();
-    await detail
-      .getByLabel('图表分类列', { exact: true })
-      .selectOption('total');
+    await detail.getByLabel('图表分类列', { exact: true }).selectOption('商品');
   }
   await selectChart(page);
   await selectChart(other);
@@ -680,4 +728,269 @@ test('query memory exhaustion stays in the worker and the engine can run another
   });
   expect(outcome.error).toContain('Out of Memory');
   expect(outcome.result.data).toEqual([{ total: 1 }]);
+});
+
+test('chart generation finishes after analysis, updates another tab and does not block a new run', async ({
+  page,
+  context,
+}) => {
+  await page.goto('/');
+  await configure(page);
+  await upload(page, 'slow-chart-test background');
+  await page.getByRole('button', { name: '开始分析', exact: true }).click();
+  const original = await currentRecord(page, 'completed');
+  await expect
+    .poll(
+      async () =>
+        (await records(page))
+          .find((run) => run.id === original.id)
+          ?.nodes.find((node) => node.kind === 'result')?.visualization?.status,
+    )
+    .toBe('pending');
+  await page.getByRole('tab', { name: 'Chart', exact: true }).first().click();
+  await expect(
+    page.getByText('图表正在异步生成，数据和分析可继续查看…'),
+  ).toBeVisible();
+  const second = await context.newPage();
+  await second.goto(page.url());
+  await second.getByRole('tab', { name: 'Chart', exact: true }).first().click();
+  await expect(
+    second.getByText('图表正在异步生成，数据和分析可继续查看…'),
+  ).toBeVisible();
+  await page.getByRole('button', { name: '新建分析', exact: true }).click();
+  await upload(page, 'another run while chart pending');
+  await page.getByRole('button', { name: '开始分析', exact: true }).click();
+  const next = await currentRecord(page, 'completed');
+  expect(next.id).not.toBe(original.id);
+  for (const resolve of delayedCharts.splice(0)) resolve();
+  await expect(
+    second
+      .frameLocator('iframe[title="自动生成的图表"]')
+      .locator('canvas')
+      .first(),
+  ).toBeVisible();
+  await expect
+    .poll(
+      async () =>
+        (await records(page))
+          .find((run) => run.id === original.id)
+          ?.nodes.find((node) => node.kind === 'result')?.visualization?.status,
+    )
+    .toBe('ready');
+  expect(new URL(page.url()).searchParams.get('run')).toBe(next.id);
+});
+
+test('chart failure or no recommendation preserves the successful analysis and its data', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await configure(page);
+  for (const [question, status, message] of [
+    ['chart-failure-test', 'failed', '图表生成失败'],
+    ['chart-empty-test', 'empty', '这份结果不需要图表'],
+  ]) {
+    if (question !== 'chart-failure-test')
+      await page.getByRole('button', { name: '新建分析', exact: true }).click();
+    await upload(page, question);
+    await page.getByRole('button', { name: '开始分析', exact: true }).click();
+    await currentRecord(page, 'completed');
+    await expect
+      .poll(
+        async () =>
+          (
+            await currentRecord(page, 'completed')
+          ).nodes.find((node) => node.kind === 'result')?.visualization?.status,
+      )
+      .toBe(status);
+    const run = await currentRecord(page, 'completed');
+    expect(run.result.data).toEqual([{ total: 10 }]);
+    expect(JSON.stringify(run)).not.toContain('browser-test-key');
+    await page.getByRole('tab', { name: 'Chart', exact: true }).first().click();
+    await expect(
+      page.locator('.view-empty').filter({ hasText: message }),
+    ).toBeVisible();
+  }
+});
+
+test('refresh interrupts only pending charts, keeps the completed analysis and never regenerates it', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await configure(page);
+  await upload(page, 'slow-chart-test refresh charts');
+  await page.getByRole('button', { name: '开始分析', exact: true }).click();
+  await currentRecord(page, 'completed');
+  await expect.poll(() => delayedCharts.length).toBeGreaterThan(0);
+  const calls = requests.filter((item) =>
+    item.prompt.includes('refresh charts'),
+  ).length;
+  await page.reload();
+  await expect
+    .poll(
+      async () =>
+        (
+          await currentRecord(page, 'completed')
+        ).nodes.find((node) => node.kind === 'result')?.visualization?.status,
+    )
+    .toBe('interrupted');
+  expect((await currentRecord(page, 'completed')).result.data).toEqual([
+    { total: 10 },
+  ]);
+  expect(
+    requests.filter((item) => item.prompt.includes('refresh charts')).length,
+  ).toBe(calls);
+});
+
+test('stop cancels pending charts and deleting a completed run prevents late chart resurrection', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await configure(page);
+  await upload(page, 'slow-chart-test hold-summary-chart-test');
+  await page.getByRole('button', { name: '开始分析', exact: true }).click();
+  await expect.poll(() => delayedCharts.length).toBeGreaterThan(0);
+  await page.getByRole('button', { name: '停止分析', exact: true }).click();
+  const cancelled = await currentRecord(page, 'cancelled');
+  expect(
+    cancelled.nodes.find((node) => node.kind === 'result').visualization.status,
+  ).toBe('cancelled');
+  for (const resolve of delayedCharts.splice(0)) resolve();
+  await page.getByRole('button', { name: '新建分析', exact: true }).click();
+  await upload(page, 'slow-chart-test delete pending chart');
+  await page.getByRole('button', { name: '开始分析', exact: true }).click();
+  const completed = await currentRecord(page, 'completed');
+  await expect.poll(() => delayedCharts.length).toBeGreaterThan(0);
+  await page
+    .getByRole('navigation', { name: '分析历史' })
+    .getByRole('button', {
+      name: 'slow-chart-test delete pending chart',
+      exact: true,
+    })
+    .hover();
+  await page
+    .getByRole('button', {
+      name: '删除分析：slow-chart-test delete pending chart',
+      exact: true,
+    })
+    .click();
+  await expect(page).not.toHaveURL(/run=/);
+  for (const resolve of delayedCharts.splice(0)) resolve();
+  await page.waitForTimeout(300);
+  expect((await records(page)).some((run) => run.id === completed.id)).toBe(
+    false,
+  );
+  expect(
+    (await records(page)).find((run) => run.id === cancelled.id).status,
+  ).toBe('cancelled');
+});
+
+test('empty query results do not request a visualization', async ({ page }) => {
+  await page.goto('/');
+  await configure(page);
+  await upload(page, 'empty-result-chart-test');
+  await page.getByRole('button', { name: '开始分析', exact: true }).click();
+  const run = await currentRecord(page, 'completed');
+  const result = run.nodes.find((node) => node.kind === 'result');
+  expect(result.payload.data).toEqual([]);
+  expect(result.visualization).toBeUndefined();
+  expect(
+    requests.filter(
+      (item) =>
+        item.prompt.startsWith('你是一个图表推荐专家') &&
+        item.prompt.includes('empty-result-chart-test'),
+    ),
+  ).toHaveLength(0);
+});
+
+test('saved visualization JSON renders safely without exposing the Notebook page or loading external content', async ({
+  page,
+  context,
+}) => {
+  const external = [];
+  context.on('request', (request) => {
+    if (request.url().startsWith('https://chart-evil.test'))
+      external.push(request.url());
+  });
+  await page.goto('/');
+  await configure(page);
+  await upload(page, 'safe chart render');
+  await page.getByRole('button', { name: '开始分析', exact: true }).click();
+  const run = await currentRecord(page, 'completed');
+  await expect
+    .poll(
+      async () =>
+        (
+          await currentRecord(page, 'completed')
+        ).nodes.find((node) => node.kind === 'result')?.visualization?.status,
+    )
+    .toBe('ready');
+  const malicious =
+    '</script><img src="https://chart-evil.test/leak" onerror="parent.__chartEscaped=true">';
+  await page.evaluate(
+    async ({ id, malicious }) => {
+      const db = await new Promise((resolve) => {
+        const request = indexedDB.open('ava-notebook-direct', 1);
+        request.onsuccess = () => resolve(request.result);
+      });
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction('runs', 'readwrite');
+        const store = tx.objectStore('runs');
+        const request = store.get(id);
+        request.onsuccess = () => {
+          const run = request.result;
+          run.nodes.find((node) => node.kind === 'result').visualization = {
+            status: 'ready',
+            config: {
+              type: 'table',
+              title: 'Safe saved chart',
+              data: [{ note: malicious }],
+            },
+          };
+          store.put(run, id);
+        };
+        tx.oncomplete = resolve;
+        tx.onerror = () => reject(tx.error);
+      });
+      db.close();
+    },
+    { id: run.id, malicious },
+  );
+  await page.reload();
+  await page.getByRole('tab', { name: 'Chart', exact: true }).first().click();
+  const chart = page.frameLocator('iframe[title="自动生成的图表"]').first();
+  await expect(chart.getByText(malicious, { exact: true })).toBeVisible();
+  expect(await chart.locator('img').count()).toBe(0);
+  expect(await page.evaluate(() => window.__chartEscaped)).toBeUndefined();
+  expect(
+    await chart.locator('body').evaluate(() => {
+      try {
+        return !!parent.document;
+      } catch {
+        return false;
+      }
+    }),
+  ).toBe(false);
+  expect(external).toEqual([]);
+});
+
+test('multiple query charts run with two requests at a time and queued results still finish', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await configure(page);
+  await upload(page, 'many-chart-test slow-chart-test', 'loop');
+  await page.getByRole('button', { name: '开始分析', exact: true }).click();
+  const run = await currentRecord(page, 'completed');
+  expect(run.nodes.filter((node) => node.kind === 'result')).toHaveLength(4);
+  await expect.poll(() => delayedCharts.length).toBe(2);
+  for (const resolve of delayedCharts.splice(0)) resolve();
+  await expect.poll(() => delayedCharts.length).toBe(2);
+  for (const resolve of delayedCharts.splice(0)) resolve();
+  await expect
+    .poll(async () =>
+      (await currentRecord(page, 'completed')).nodes
+        .filter((node) => node.kind === 'result')
+        .map((node) => node.visualization?.status),
+    )
+    .toEqual(['ready', 'ready', 'ready', 'ready']);
 });

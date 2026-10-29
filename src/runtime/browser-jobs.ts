@@ -13,7 +13,28 @@ import { readLocal, writeLocal, listLocal } from './indexed-db';
 
 type StoredRun = Run & { build: string; events: any[]; commandIds?: string[] };
 type Credentials = { model: string; baseURL: string; apiKey: string };
-let active: { run: StoredRun; worker: Worker; release: () => void } | undefined;
+type Job = { run: StoredRun; worker: Worker; release: () => void };
+let active: Job | undefined;
+const jobs = new Map<string, Job>();
+function closeJob(id: string) {
+  const job = jobs.get(id);
+  if (!job) return;
+  job.worker.terminate();
+  job.release();
+  jobs.delete(id);
+  if (active === job) active = undefined;
+}
+function endVisualizations(
+  run: Run,
+  status: 'failed' | 'cancelled' | 'interrupted',
+) {
+  for (const node of run.nodes)
+    if (node.visualization?.status === 'pending')
+      node.visualization = {
+        status,
+        ...(status === 'failed' ? { error: '浏览器图表生成已停止' } : {}),
+      };
+}
 const unsaved = new Map<string, StoredRun>();
 const listeners = new Map<string, Set<RunObserver>>();
 let queue = Promise.resolve();
@@ -50,8 +71,9 @@ async function persist(run: StoredRun, nodes: Evidence[] = []) {
   try {
     await writeLocal('runs', run.id, run);
   } catch (error) {
-    if (active?.run.id === run.id) active.worker.terminate();
-    run.status = 'failed';
+    closeJob(run.id);
+    endVisualizations(run, 'failed');
+    if (!terminal.has(run.status)) run.status = 'failed';
     run.error =
       '浏览器保存失败，分析已停止。请检查网站存储空间并导出已有结果。';
     for (const node of run.nodes)
@@ -67,7 +89,10 @@ const runLockName = (id: string) => `ava-notebook-run:${id}`;
 
 export async function recoverRuns() {
   for (const run of await listLocal<StoredRun>('runs')) {
-    if (terminal.has(run.status) || active?.run.id === run.id) continue;
+    const pending = run.nodes.some(
+      (node) => node.visualization?.status === 'pending',
+    );
+    if ((terminal.has(run.status) && !pending) || jobs.has(run.id)) continue;
     // A lock held by another tab means the analysis is still alive there.
     if (!navigator.locks) continue;
     await navigator.locks.request(
@@ -75,11 +100,24 @@ export async function recoverRuns() {
       { ifAvailable: true },
       async (held) => {
         if (!held) return;
-        run.status = 'interrupted';
-        run.error = '页面曾关闭或刷新，请使用此数据重新分析';
-        for (const node of run.nodes)
+        // The other tab may have finished or deleted this record since the scan.
+        const current = await readLocal<StoredRun>('runs', run.id);
+        if (
+          !current ||
+          (terminal.has(current.status) &&
+            !current.nodes.some(
+              (node) => node.visualization?.status === 'pending',
+            ))
+        )
+          return;
+        if (!terminal.has(current.status)) {
+          current.status = 'interrupted';
+          current.error = '页面曾关闭或刷新，请使用此数据重新分析';
+        }
+        endVisualizations(current, 'interrupted');
+        for (const node of current.nodes)
           if (node.status === 'running') node.status = 'interrupted';
-        await persist(run, run.nodes);
+        await persist(current, current.nodes);
       },
     );
   }
@@ -111,9 +149,10 @@ export function activeRunId() {
   return active?.run.id;
 }
 export function activeRun(id: string) {
-  return structuredClone(active?.run.id === id ? active.run : unsaved.get(id));
+  return structuredClone(jobs.get(id)?.run ?? unsaved.get(id));
 }
 export function forgetBrowserRun(id: string) {
+  closeJob(id);
   unsaved.delete(id);
   listeners.delete(id);
 }
@@ -203,9 +242,25 @@ export async function startBrowserRun(body: any, llm: Credentials) {
   }
   const job = { run, worker, release };
   active = job;
+  jobs.set(run.id, job);
   async function message(data: any) {
-    if (active !== job || terminal.has(run.status)) return;
+    if (jobs.get(run.id) !== job) return;
+    if (data.type === 'finished') {
+      closeJob(run.id);
+      return;
+    }
     try {
+      if (data.type === 'visualization') {
+        const node = run.nodes.find(
+          (item) => item.id === data.nodeId && item.kind === 'result',
+        );
+        if (node) {
+          node.visualization = data.visualization;
+          await persist(run, [node]);
+        }
+        return;
+      }
+      if (active !== job || terminal.has(run.status)) return;
       if (data.type === 'event') {
         const event = {
           ...data.event,
@@ -246,8 +301,6 @@ export async function startBrowserRun(body: any, llm: Credentials) {
       }
     } finally {
       if (terminal.has(run.status)) {
-        worker.terminate();
-        release();
         if (active === job) active = undefined;
       }
     }
@@ -257,12 +310,18 @@ export async function startBrowserRun(body: any, llm: Credentials) {
   };
   worker.onerror = (event) => {
     event.preventDefault();
-    void lock(() =>
-      message({
-        type: 'failed',
-        error: { message: '浏览器分析引擎加载失败，请检查网络后重试' },
-      }),
-    );
+    void lock(async () => {
+      if (jobs.get(run.id) !== job) return;
+      closeJob(run.id);
+      endVisualizations(run, 'failed');
+      if (!terminal.has(run.status)) {
+        run.status = 'failed';
+        run.error = '浏览器分析引擎加载失败，请检查网络后重试';
+        for (const node of run.nodes)
+          if (node.status === 'running') node.status = 'failed';
+      }
+      await persist(run, run.nodes).catch(() => {});
+    });
   };
   worker.postMessage({
     file: stored.file,
@@ -283,30 +342,27 @@ export async function stopBrowserRun(id: string, requestId?: string) {
         ? '此分析正在另一个页面运行，请在该页面停止'
         : '任务未在运行',
     );
-  const { run, worker, release } = active;
-  worker.terminate();
+  const { run } = active;
+  closeJob(id);
+  endVisualizations(run, 'cancelled');
   run.status = 'cancelled';
   if (requestId)
     run.commandIds = [...(run.commandIds ?? []), requestId].slice(-500);
   const changed = run.nodes.filter((node) => node.status === 'running');
   for (const node of changed) node.status = 'cancelled';
-  try {
-    await persist(run, changed);
-  } finally {
-    active = undefined;
-    release();
-  }
+  await persist(run, run.nodes);
   return publicRun(run);
 }
 
 export async function saveBrowserRun(run: Run) {
-  if (active?.run.id === run.id) Object.assign(active.run, run);
+  const job = jobs.get(run.id);
+  if (job) Object.assign(job.run, run);
   await writeLocal('runs', run.id, run);
   notify(run, run.nodes);
 }
 
 export async function assertBrowserRunMutable(id: string) {
-  if (active?.run.id === id || !navigator.locks) return;
+  if (jobs.has(id) || !navigator.locks) return;
   await navigator.locks.request(
     runLockName(id),
     { ifAvailable: true },
