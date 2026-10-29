@@ -1,4 +1,5 @@
-Logic Cat — original mascot for the AVA Notebook banner.
+Archived Logic Cat — previous mascot for the AVA Notebook banner.
+The homepage now uses an interactive canvas background in src/HomeBackdrop.tsx.
 Generated with the built-in image_gen tool; exact model not exposed by the tool.
 Visual reference: https://github.com/s1dashu/ip-as-logo-skill
 One character requested. Adapted as a transparent cutout for the existing banner.

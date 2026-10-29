@@ -39,6 +39,7 @@ import StatusLabel from './StatusLabel';
 import Notebook from './Notebook';
 import Detail from './Detail';
 import { DataTable } from './DataViews';
+import HomeBackdrop from './HomeBackdrop';
 const Graph = lazy(() => import('./Graph'));
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
@@ -347,86 +348,88 @@ export default function App() {
         className={`main ${run ? 'analysis-page' : 'home-page'}`}
         inert={sidebarOpen}
       >
-        <header
-          className="topbar"
-          style={{ viewTransitionName: 'persistent-topbar' }}
-        >
-          <div className="header-location">
-            <button
-              className="icon-button sidebar-toggle"
-              aria-label="展开侧边栏"
-              aria-expanded={sidebarOpen}
-              onClick={() => setSidebarOpen(!sidebarOpen)}
-            >
-              <PanelLeft size={18} />
-            </button>
-            <span className="header-context">
-              <BookOpen size={15} className="workspace-icon" />
-              <span>我的工作空间</span>
-              <ChevronRight size={13} />
+        {run && (
+          <header
+            className="topbar"
+            style={{ viewTransitionName: 'persistent-topbar' }}
+          >
+            <div className="header-location">
+              <button
+                className="icon-button sidebar-toggle"
+                aria-label="展开侧边栏"
+                aria-expanded={sidebarOpen}
+                onClick={() => setSidebarOpen(!sidebarOpen)}
+              >
+                <PanelLeft size={18} />
+              </button>
+              <span className="header-context">
+                <BookOpen size={15} className="workspace-icon" />
+                <span>我的工作空间</span>
+                <ChevronRight size={13} />
+                {run && (
+                  <>
+                    <span>分析笔记</span>
+                    <ChevronRight size={13} />
+                  </>
+                )}
+              </span>
+              <strong
+                className="header-title"
+                title={
+                  run
+                    ? `${run.source.name.replace(/\.csv$/i, '')}.notebook`
+                    : undefined
+                }
+              >
+                {run
+                  ? `${run.source.name.replace(/\.csv$/i, '')}.notebook`
+                  : '新建分析'}
+              </strong>
+            </div>
+            <div className="header-actions">
               {run && (
                 <>
-                  <span>分析笔记</span>
-                  <ChevronRight size={13} />
+                  <a
+                    aria-label="导出证据"
+                    className="text-button"
+                    href={`/api/runs/${run.id}/export`}
+                    onClick={
+                      browserMode
+                        ? (event) => {
+                            event.preventDefault();
+                            const blob = new Blob(
+                              [
+                                JSON.stringify(
+                                  {
+                                    format: 'ava-notebook-evidence',
+                                    version: 1,
+                                    exportedAt: new Date().toISOString(),
+                                    run,
+                                  },
+                                  null,
+                                  2,
+                                ),
+                              ],
+                              { type: 'application/json' },
+                            );
+                            const url = URL.createObjectURL(blob);
+                            const link = document.createElement('a');
+                            link.href = url;
+                            link.download = `ava-evidence-${run.id}.json`;
+                            link.click();
+                            setTimeout(() => URL.revokeObjectURL(url), 1000);
+                          }
+                        : undefined
+                    }
+                  >
+                    <Download size={14} />
+                    导出
+                  </a>
                 </>
               )}
-            </span>
-            <strong
-              className="header-title"
-              title={
-                run
-                  ? `${run.source.name.replace(/\.csv$/i, '')}.notebook`
-                  : undefined
-              }
-            >
-              {run
-                ? `${run.source.name.replace(/\.csv$/i, '')}.notebook`
-                : '新建分析'}
-            </strong>
-          </div>
-          <div className="header-actions">
-            {run && (
-              <>
-                <a
-                  aria-label="导出证据"
-                  className="text-button"
-                  href={`/api/runs/${run.id}/export`}
-                  onClick={
-                    browserMode
-                      ? (event) => {
-                          event.preventDefault();
-                          const blob = new Blob(
-                            [
-                              JSON.stringify(
-                                {
-                                  format: 'ava-notebook-evidence',
-                                  version: 1,
-                                  exportedAt: new Date().toISOString(),
-                                  run,
-                                },
-                                null,
-                                2,
-                              ),
-                            ],
-                            { type: 'application/json' },
-                          );
-                          const url = URL.createObjectURL(blob);
-                          const link = document.createElement('a');
-                          link.href = url;
-                          link.download = `ava-evidence-${run.id}.json`;
-                          link.click();
-                          setTimeout(() => URL.revokeObjectURL(url), 1000);
-                        }
-                      : undefined
-                  }
-                >
-                  <Download size={14} />
-                  导出
-                </a>
-              </>
-            )}
-          </div>
-        </header>
+            </div>
+          </header>
+        )}
         {error && (
           <div className="global-error" role="alert">
             <span>{error}</span>
@@ -455,21 +458,13 @@ export default function App() {
         >
           {!run ? (
             <div className="home">
+              <HomeBackdrop />
               <div className="home-content">
                 <div className="home-heading">
                   <h1>
                     <span>一句话分析 CSV，</span>
                     <span>在 Notebook 中看清每一步</span>
                   </h1>
-                  <img
-                    className="home-hero-art"
-                    src="/logic-cat.png"
-                    alt="托腮思考的逻辑猫"
-                    width={1254}
-                    height={1254}
-                    fetchPriority="high"
-                    draggable={false}
-                  />
                 </div>
                 <section
                   className={`compose-card ${dragging ? 'dragging' : ''}`}
