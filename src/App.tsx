@@ -32,7 +32,7 @@ import {
   BookOpen,
   Search,
   ChevronRight,
-  ChartNoAxesCombined,
+  NotebookPen,
 } from 'lucide-react';
 import { api, post } from './api';
 import type { Run, Source, Mode, Session, Evidence } from './types';
@@ -297,10 +297,10 @@ export default function App() {
           }}
         >
           <span className="brand-symbol">
-            <ChartNoAxesCombined size={20} strokeWidth={1.8} />
+            <NotebookPen size={20} strokeWidth={1.8} />
           </span>
           <strong>
-            ava<span>数据分析</span>
+            ava<span>notebook</span>
           </strong>
         </a>
         <button
