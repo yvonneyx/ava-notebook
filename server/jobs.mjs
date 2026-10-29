@@ -178,6 +178,7 @@ export class Jobs {
       gate: null,
       pauseRequested: false,
       initialDecision: sql || instruction ? { sql, instruction } : null,
+      resumePending: !!parentId,
     };
     this.active = job;
     child.stderr.on('data', () => {});
@@ -253,10 +254,14 @@ export class Jobs {
       if (!node)
         throw new Error('AVA telemetry did not announce the pending step');
       node.checkpoint = node.id;
+      // A fork runs its chosen cell once, then follows the requested pause mode.
+      const resuming = job.resumePending && node.id === run.forkNodeId;
+      job.resumePending = false;
       const pause =
         job.pauseRequested ||
-        run.mode === 'step' ||
-        (run.mode === 'query' && message.state.phase === 'query');
+        (!resuming &&
+          (run.mode === 'step' ||
+            (run.mode === 'query' && message.state.phase === 'query')));
       job.gate = { requestId: message.id, state: message.state };
       if (pause) {
         run.status = 'paused';

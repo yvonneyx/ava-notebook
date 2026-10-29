@@ -109,6 +109,7 @@ export function stepNarrative(run: Run, step: NotebookStep) {
   const queries = step.nodes.filter((node) => node.kind === 'query');
   return {
     introduction,
+    provisional: true,
     conclusion: queries.some((node) => node.status === 'failed')
       ? '查询未全部成功，需要修正后再形成结论。'
       : results.length

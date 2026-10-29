@@ -25,7 +25,6 @@ import {
   Square,
   Download,
   GitBranch,
-  List,
   Network,
   X,
   Check,
@@ -264,6 +263,9 @@ export default function App() {
     history.replaceState(null, '', `?run=${next.id}`);
     await refreshRuns();
   }
+  const classicCases = runs.filter(
+    (item) => item.caseStudy && item.status === 'completed',
+  );
   const filtered = runs.filter((item) =>
     `${item.question} ${item.source.name}`
       .toLowerCase()
@@ -371,7 +373,7 @@ export default function App() {
           className="topbar"
           style={{ viewTransitionName: 'persistent-topbar' }}
         >
-          <div>
+          <div className="header-location">
             <button
               className="icon-button sidebar-toggle"
               aria-label="展开侧边栏"
@@ -380,14 +382,57 @@ export default function App() {
             >
               <PanelLeft size={18} />
             </button>
-            <BookOpen size={15} className="workspace-icon" />
-            <span>我的工作空间</span>
-            <ChevronRight size={13} />
-            <strong>{run ? '分析记录' : '新建分析'}</strong>
+            <span className="header-context">
+              <BookOpen size={15} className="workspace-icon" />
+              <span>我的工作空间</span>
+              <ChevronRight size={13} />
+              {run && (
+                <>
+                  <span>分析笔记</span>
+                  <ChevronRight size={13} />
+                </>
+              )}
+            </span>
+            <strong
+              className="header-title"
+              title={
+                run
+                  ? `${run.source.name.replace(/\.csv$/i, '')}.notebook`
+                  : undefined
+              }
+            >
+              {run
+                ? `${run.source.name.replace(/\.csv$/i, '')}.notebook`
+                : '新建分析'}
+            </strong>
+            {run?.parentId && (
+              <button
+                className="text-button"
+                onClick={() => void act(() => openRun(run.parentId!))}
+              >
+                <GitBranch size={12} />
+                原分支
+              </button>
+            )}
           </div>
-          <span className="topbar-note">
-            <span className="connection-dot ok" /> 本地运行
-          </span>
+          <div className="header-actions">
+            {run && (
+              <>
+                {!connected && <span className="amber">连接恢复中…</span>}
+                <span className={`status status-${run.status}`}>
+                  {statusLabels[run.status]}
+                </span>
+                <a
+                  aria-label="导出证据"
+                  className="text-button"
+                  href={`/api/runs/${run.id}/export`}
+                >
+                  <Download size={14} />
+                  导出
+                </a>
+              </>
+            )}
+          </div>
         </header>
         {error && (
           <div className="global-error" role="alert">
@@ -614,31 +659,34 @@ export default function App() {
                     <ArrowRight size={14} />
                   </button>
                 )}
-                {runs.length > 0 && (
-                  <section className="recent-section">
-                    <div className="recent-heading">
-                      <h2>最近分析</h2>
-                      <span>{runs.length} 份记录</span>
+                {classicCases.length > 0 && (
+                  <section className="case-section" aria-label="经典案例">
+                    <div className="case-heading">
+                      <h2>经典案例</h2>
                     </div>
-                    <div className="recent-grid">
-                      {runs.slice(0, 3).map((item) => (
-                        <button
-                          key={item.id}
-                          className="recent-item"
-                          onClick={() => void act(() => openRun(item.id))}
-                        >
-                          <span className="recent-icon">
-                            <BookOpen size={17} />
+                    <div className="case-grid">
+                      {classicCases.map((item) => (
+                        <article key={item.id} className="case-card">
+                          <span className="case-icon" aria-hidden="true">
+                            <BookOpen size={16} strokeWidth={1.5} />
                           </span>
-                          <span className="recent-title">
-                            <strong>{item.question}</strong>
-                            <small>{item.source.name}</small>
-                          </span>
-                          <span className={`status status-${item.status}`}>
-                            {statusLabels[item.status]}
-                          </span>
-                          <ArrowRight size={15} />
-                        </button>
+                          <h3>{item.caseStudy!.title}</h3>
+                          <p>{item.caseStudy!.description}</p>
+                          <div className="case-footer">
+                            <small>
+                              {item.source.name} ·{' '}
+                              {item.source.rows.toLocaleString()} 行
+                            </small>
+                            <button
+                              className="case-review"
+                              aria-label={`回顾：${item.caseStudy!.title}`}
+                              disabled={busy}
+                              onClick={() => void act(() => openRun(item.id))}
+                            >
+                              回顾 <ArrowRight size={14} />
+                            </button>
+                          </div>
+                        </article>
                       ))}
                     </div>
                   </section>
@@ -647,48 +695,6 @@ export default function App() {
             </div>
           ) : (
             <div className="workspace">
-              <div className="task-header">
-                <div>
-                  <div className="task-eyebrow">
-                    <span className={`status status-${run.status}`}>
-                      {statusLabels[run.status]}
-                    </span>
-                    {run.parentId && (
-                      <button
-                        className="text-button"
-                        onClick={() => void act(() => openRun(run.parentId!))}
-                      >
-                        <GitBranch size={12} />
-                        查看原分支
-                      </button>
-                    )}
-                    <span className="task-source">
-                      <FileSpreadsheet size={13} />
-                      {run.source.name}
-                    </span>
-                  </div>
-                  <h1 title={run.question}>{run.question}</h1>
-                  <div className="task-meta">
-                    <span>{run.nodes.length} 个步骤</span>
-                    <span>
-                      {run.nodes.filter((n) => n.kind === 'reason').length}{' '}
-                      轮分析
-                    </span>
-                    <span>{run.model}</span>
-                    {!connected && (
-                      <span className="amber">连接已断开，正在恢复…</span>
-                    )}
-                  </div>
-                </div>
-                <a
-                  aria-label="导出证据"
-                  className="button secondary export-button"
-                  href={`/api/runs/${run.id}/export`}
-                >
-                  <Download size={14} />
-                  导出
-                </a>
-              </div>
               {run.error && (
                 <div className="run-error notice error-notice">
                   {run.error}
@@ -713,7 +719,7 @@ export default function App() {
                     className={view === 'notebook' ? 'active' : ''}
                     onClick={() => startTransition(() => setView('notebook'))}
                   >
-                    <List size={14} />
+                    <BookOpen size={14} />
                     Notebook
                   </button>
                   <button
@@ -750,7 +756,7 @@ export default function App() {
                           onClick={() => void act(() => control('continue'))}
                         >
                           <Play size={13} />
-                          继续
+                          继续分析
                         </button>
                       ) : (
                         <button
@@ -812,9 +818,9 @@ export default function App() {
                         busy={busy}
                         selected={selected}
                         onSelect={selectNode}
-                        onContinue={(sql) =>
+                        onContinue={(decision, nextMode) =>
                           void act(() =>
-                            control('continue', sql ? { sql } : {}),
+                            control('continue', decision, nextMode),
                           )
                         }
                         onFork={(id) => void act(() => forkRun(id))}

@@ -118,6 +118,8 @@ export default function EvidenceViews({
   onSelect,
   busy,
   onChart,
+  outputOnly = false,
+  caption,
 }: {
   node: Evidence;
   run: Run;
@@ -127,12 +129,17 @@ export default function EvidenceViews({
   onSelect: (id: string) => void;
   busy?: boolean;
   onChart?: (nodeId: string, x: string, y: string) => void;
+  outputOnly?: boolean;
+  caption?: string;
 }) {
   const scope = useId();
+  const availableViews = outputOnly
+    ? views.filter((item) => item.id !== 'sql')
+    : views;
   const [view, setView] = useState<View>(
     node.kind === 'chart'
       ? 'chart'
-      : ['query', 'reason'].includes(node.kind)
+      : !outputOnly && ['query', 'reason'].includes(node.kind)
       ? 'sql'
       : 'data',
   );
@@ -145,11 +152,11 @@ export default function EvidenceViews({
       : undefined;
   const pendingId = pendingDataset?.id;
   useEffect(() => {
-    if (pendingId) {
+    if (pendingId && !outputOnly) {
       setDatasetId(pendingId);
       setView('sql');
     }
-  }, [pendingId]);
+  }, [pendingId, outputOnly]);
   const dataset =
     datasets.find((item) => item.id === datasetId) ||
     pendingDataset ||
@@ -164,33 +171,37 @@ export default function EvidenceViews({
       : '这条查询尚无结果，执行完成后可查看'
     : '该环节暂无关联的查询数据';
   return (
-    <section className="evidence-views" aria-label={`${node.title}的三种视图`}>
+    <section
+      className="evidence-views"
+      aria-label={`${node.title}的${outputOnly ? '输出' : '三种视图'}`}
+    >
       <div className="evidence-view-toolbar">
+        {caption && <span className="evidence-caption">{caption}</span>}
         <div
           className="evidence-tabs"
           role="tablist"
           aria-label="证据视图"
           onKeyDown={(event) => {
-            const index = views.findIndex((item) => item.id === view);
+            const index = availableViews.findIndex((item) => item.id === view);
             const next =
               event.key === 'ArrowRight'
-                ? (index + 1) % views.length
+                ? (index + 1) % availableViews.length
                 : event.key === 'ArrowLeft'
-                ? (index + views.length - 1) % views.length
+                ? (index + availableViews.length - 1) % availableViews.length
                 : event.key === 'Home'
                 ? 0
                 : event.key === 'End'
-                ? views.length - 1
+                ? availableViews.length - 1
                 : -1;
             if (next < 0) return;
             event.preventDefault();
-            setView(views[next].id);
+            setView(availableViews[next].id);
             event.currentTarget
               .querySelectorAll<HTMLButtonElement>('[role="tab"]')
               [next]?.focus();
           }}
         >
-          {views.map(({ id, label, Icon }) => (
+          {availableViews.map(({ id, label, Icon }) => (
             <button
               key={id}
               id={`${scope}-${id}`}

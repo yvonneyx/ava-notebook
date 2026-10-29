@@ -306,7 +306,8 @@ test('SQL drafts stay editable and execution controls remain outside the view ta
   const html = render(Notebook, { ...common, drafts: { q0: draft } });
   assert.match(html, /SELECT 8 AS value/);
   assert.match(html, /应用并运行/);
-  assert.ok(html.indexOf('应用并运行') > html.indexOf('</section>'));
+  assert.ok(html.indexOf('应用并运行') < html.indexOf('class="cell-output"'));
+  assert.match(html, /Shift\+Enter/);
   const detail = render(Detail, {
     ...common,
     node,
@@ -430,4 +431,97 @@ test('a grouped round edits the currently paused query without mixing in prior r
   assert.match(html, /应用并运行/);
   const step = notebookSteps(fixture)[0];
   assert.equal(stepDatasets(fixture, step)[1].rows, undefined);
+});
+
+test('notebook keeps every query input above its own output and does not repeat SQL in review rounds', () => {
+  const html = render(Notebook, {
+    run: { ...run, nodes: [model0, q0, r0, q1, r1, model1] },
+    drafts: {},
+    busy: false,
+    onEdit: noop,
+    onContinue: noop,
+    onFork: noop,
+    onSelect: noop,
+  });
+  assert.equal((html.match(/aria-label="SQL 单元格 /g) || []).length, 2);
+  assert.equal((html.match(/<textarea/g) || []).length, 2);
+  assert.equal((html.match(/SELECT 2 AS value/g) || []).length, 1);
+  assert.equal((html.match(/SELECT 3 AS value/g) || []).length, 1);
+  for (const [query, result, value] of [
+    ['q0', 'r0', 2],
+    ['q1', 'r1', 3],
+  ]) {
+    const cell = html.slice(
+      html.indexOf(`id="step-${query}"`),
+      html.indexOf(`id="step-${result}"`) + 1,
+    );
+    assert.match(cell, new RegExp(`SELECT ${value} AS value`));
+  }
+  assert.match(html, /查看本轮引用的 2 份依据/);
+  assert.doesNotMatch(html, /role="tab"[^>]*>[^<]*SQL/);
+});
+
+test('only the paused query is editable in an active notebook; historical drafts label saved outputs', () => {
+  const props = {
+    drafts: { q0: { sql: 'SELECT 99 AS value' } },
+    busy: false,
+    onEdit: noop,
+    onContinue: noop,
+    onFork: noop,
+    onSelect: noop,
+  };
+  const historical = render(Notebook, {
+    ...props,
+    run: { ...run, nodes: [model0, q0, r0] },
+  });
+  assert.match(historical, /SELECT 99 AS value/);
+  assert.match(historical, /展示上次执行结果；SQL 修改后需重新执行/);
+  assert.match(historical, /重跑会创建新分支，保留当前笔记/);
+  const active = render(Notebook, {
+    ...props,
+    run: {
+      ...run,
+      status: 'paused',
+      activeNodeId: 'q1',
+      nodes: [model0, q0, r0, q1],
+    },
+  });
+  assert.equal((active.match(/<textarea/g) || []).length, 1);
+  assert.match(active, /aria-label="编辑 SQL 单元格 2"/);
+  assert.doesNotMatch(active, /aria-label="编辑 SQL 单元格 1"/);
+  assert.match(active, /运行后在下一条查询前暂停/);
+});
+
+test('completed SQL folds for reading while pending, failed and modified SQL stays open', () => {
+  const notebook = (changes = {}, drafts = {}, query = q0) =>
+    render(Notebook, {
+      run: { ...run, nodes: [model0, query, r0], ...changes },
+      drafts,
+      busy: false,
+      onEdit: noop,
+      onContinue: noop,
+      onFork: noop,
+      onSelect: noop,
+    });
+  const completed = notebook();
+  assert.match(completed, /<details class="cell-input">/);
+  assert.match(completed, /结果 · 1 行/);
+  assert.match(completed, /<td class="numeric">2<\/td>/);
+  assert.doesNotMatch(completed, /等待模型核验|本轮尚未形成结论|In \[|Out \[/);
+  for (const html of [
+    notebook({ status: 'paused', activeNodeId: q0.id }),
+    notebook({}, { q0: { sql: 'SELECT 99 AS value' } }),
+    notebook(
+      {},
+      {},
+      {
+        ...q0,
+        status: 'failed',
+        payload: { ...q0.payload, error: { message: '查询失败' } },
+      },
+    ),
+    notebook({ nodes: [model0, q0] }),
+  ]) {
+    assert.match(html, /<details class="cell-input" open="">/);
+  }
 });

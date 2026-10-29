@@ -244,6 +244,31 @@ test(
         [{ adjusted: 3 }],
       );
       await until(async () => !(await request('/api/session')).activeRunId);
+      let rerunCell = await request(`/api/runs/${run.id}/fork`, {
+        nodeId: 'q-0-0',
+        mode: 'query',
+        sql: 'SELECT COUNT(*) + 9 AS count FROM data',
+      });
+      rerunCell = await waitRun(
+        rerunCell.id,
+        (r) => r.status === 'paused' && r.activeNodeId === 'q-0-1',
+      );
+      assert.deepEqual(
+        rerunCell.nodes.find((n) => n.id === 'q-0-0-result').payload.data,
+        [{ count: 11 }],
+      );
+      assert.equal(
+        rerunCell.nodes.find((n) => n.id === 'q-0-0').payload.sql,
+        'SELECT COUNT(*) + 9 AS count FROM data',
+      );
+      assert.deepEqual(
+        (await request(`/api/runs/${run.id}`)).nodes.find(
+          (n) => n.id === 'q-0-0-result',
+        ).payload.data,
+        [{ adjusted: 3 }],
+      );
+      await request(`/api/runs/${rerunCell.id}/control`, { command: 'stop' });
+      await until(async () => !(await request('/api/session')).activeRunId);
       const charted = await request(`/api/runs/${branch.id}/charts`, {
         nodeId: 'q-1-0-result',
         x: 'total',

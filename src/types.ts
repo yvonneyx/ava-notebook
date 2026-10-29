@@ -42,6 +42,7 @@ export type Run = {
   error?: string;
   nodeCount?: number;
   result?: { completionReason: string; text: string };
+  caseStudy?: { title: string; description: string };
 };
 export type Session = {
   configured: boolean;
