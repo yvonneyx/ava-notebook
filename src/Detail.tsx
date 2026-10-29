@@ -3,7 +3,7 @@ import { DataTable } from './DataViews';
 import EvidenceViews from './EvidenceViews';
 import AnalysisText from './AnalysisText';
 import { kindLabels } from './types';
-import StatusIcon from './StatusIcon';
+import StatusLabel from './StatusLabel';
 import type { Evidence, Run } from './types';
 
 export default function Detail({
@@ -43,7 +43,7 @@ export default function Detail({
         <div className="detail-title">
           <h2>{node.title}</h2>
           <span className={`status status-${node.status}`}>
-            <StatusIcon status={node.status} />
+            <StatusLabel status={node.status} />
           </span>
         </div>
         <div className="detail-meta">

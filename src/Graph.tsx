@@ -17,7 +17,6 @@ import {
   ChartColumn,
 } from 'lucide-react';
 import { kindLabels, statusLabels } from './types';
-import StatusIcon from './StatusIcon';
 import type { Evidence } from './types';
 import { layoutGraph } from './graph-layout';
 import '@xyflow/react/dist/style.css';
@@ -28,6 +27,15 @@ const icons: Record<string, typeof Database> = {
   result: Table2,
   conclusion: CheckCircle2,
   chart: ChartColumn,
+};
+const statusEmoji: Record<string, string> = {
+  ready: '⏳',
+  running: '🔄',
+  succeeded: '✅',
+  completed: '✅',
+  failed: '❌',
+  cancelled: '⏹️',
+  interrupted: '⚠️',
 };
 const Card = memo(
   ({
@@ -43,6 +51,7 @@ const Card = memo(
   >) => {
     const node = data.evidence;
     const Icon = icons[node.kind] || ScanSearch;
+    const statusLabel = statusLabels[node.status] || node.status;
     const excerpt =
       node.kind === 'query'
         ? node.payload.sql
@@ -71,7 +80,7 @@ const Card = memo(
         tabIndex={0}
         aria-label={`${data.stepNumber ? `步骤 ${data.stepNumber}：` : ''}${
           node.title
-        }，${statusLabels[node.status]}`}
+        }，${statusLabel}`}
         onClick={() => data.onSelect(node.id)}
         onKeyDown={(event) => {
           if (event.key === 'Enter' || event.key === ' ') {
@@ -95,7 +104,14 @@ const Card = memo(
           </span>
           <span>
             {data.childCount !== undefined && `${data.childCount} 个事件`}
-            <StatusIcon status={node.status} />
+            <span
+              className="node-status"
+              role="img"
+              aria-label={statusLabel}
+              title={statusLabel}
+            >
+              {statusEmoji[node.status] || statusLabel}
+            </span>
           </span>
         </div>
         <strong>{node.title}</strong>

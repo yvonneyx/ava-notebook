@@ -35,7 +35,7 @@ import { api, post, browserMode } from './api';
 import { readLocal, writeLocal } from './browser-store';
 import type { Run, Source, Session, Evidence } from './types';
 import { isActive } from './types';
-import StatusIcon from './StatusIcon';
+import StatusLabel from './StatusLabel';
 import Notebook from './Notebook';
 import Detail from './Detail';
 import { DataTable } from './DataViews';
@@ -338,9 +338,6 @@ export default function App() {
               <strong>
                 {session?.configured ? session.model : '连接分析模型'}
               </strong>
-              <span>
-                {session?.configured ? '模型设置' : '配置模型后开始分析'}
-              </span>
             </div>
             <Settings2 size={15} />
           </button>
@@ -461,9 +458,18 @@ export default function App() {
               <div className="home-content">
                 <div className="home-heading">
                   <h1>
-                    <span>用一句话，</span>
-                    <span>读懂你的数据。</span>
+                    <span>一句话分析 CSV，</span>
+                    <span>在 Notebook 中看清每一步</span>
                   </h1>
+                  <img
+                    className="home-hero-art"
+                    src="/logic-cat.png"
+                    alt="托腮思考的逻辑猫"
+                    width={1254}
+                    height={1254}
+                    fetchPriority="high"
+                    draggable={false}
+                  />
                 </div>
                 <section
                   className={`compose-card ${dragging ? 'dragging' : ''}`}
@@ -675,10 +681,12 @@ export default function App() {
                           <h3>{item.caseStudy!.title}</h3>
                           <p>{item.caseStudy!.description}</p>
                           <div className="case-footer">
-                            <small>
-                              {item.strategy === 'loop' ? '探索模式' : '快速模式'}
-                              {' · '}{item.nodeCount ?? item.nodes.length} 项证据
-                            </small>
+                            <div className="case-meta">
+                              <span className={`case-mode case-mode-${item.strategy}`}>
+                                {item.strategy === 'loop' ? '探索模式' : '快速模式'}
+                              </span>
+                              <small>{item.nodeCount ?? item.nodes.length} 项证据</small>
+                            </div>
                             <button
                               className="button primary small case-review"
                               aria-label={`回顾：${item.caseStudy!.title}`}
@@ -744,7 +752,7 @@ export default function App() {
                       {run.strategy === 'loop' ? '探索模式' : '快速模式'}
                     </span>
                     <span className={`status status-${run.status}`} role="status">
-                      <StatusIcon status={run.status} />
+                      <StatusLabel status={run.status} />
                     </span>
                     {!connected && <span className="amber">连接恢复中…</span>}
                   </div>

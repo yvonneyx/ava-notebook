@@ -1,7 +1,7 @@
 import { useId, useState } from 'react';
 import { Braces, Table2, ChartColumn, ArrowUpRight } from 'lucide-react';
 import type { Evidence, Run } from './types';
-import StatusIcon from './StatusIcon';
+import StatusLabel from './StatusLabel';
 import { DataTable, Bars } from './DataViews';
 import SqlCode from './SqlCode';
 import {
@@ -223,7 +223,7 @@ export default function EvidenceViews({
               <>
                 <div className="code-caption">
                   <span className="code-language">SQL</span>
-                  <StatusIcon status={query.status} />
+                  <StatusLabel status={query.status} />
                 </div>
                 <pre className="inline-code">
                   <SqlCode sql={query.payload.sql} />

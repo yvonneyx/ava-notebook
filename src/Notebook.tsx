@@ -1,7 +1,7 @@
 import { ArrowUpRight, LoaderCircle, FileSpreadsheet } from 'lucide-react';
 import type { Evidence, Run } from './types';
 import { isActive } from './types';
-import StatusIcon from './StatusIcon';
+import StatusLabel from './StatusLabel';
 import EvidenceViews from './EvidenceViews';
 import AnalysisText from './AnalysisText';
 import SqlCode from './SqlCode';
@@ -39,7 +39,7 @@ function QueryCell({
         <div>
           {node.status !== 'succeeded' && (
             <span className={`status status-${node.status}`}>
-              <StatusIcon status={node.status} />
+              <StatusLabel status={node.status} />
             </span>
           )}
           <button
@@ -238,7 +238,7 @@ export default function Notebook({ run, selected, onSelect }: NotebookProps) {
                 <h2>{node.title}</h2>
                 {state !== 'succeeded' && (
                   <span className={`status status-${state}`}>
-                    <StatusIcon status={state} />
+                    <StatusLabel status={state} />
                   </span>
                 )}
                 <button
@@ -280,7 +280,7 @@ export default function Notebook({ run, selected, onSelect }: NotebookProps) {
                 >
                   <div>
                     <strong>分析结论</strong>
-                    {final && <StatusIcon status="completed" label="分析完成" />}
+                    {final && <StatusLabel status="completed" label="分析完成" />}
                   </div>
                   <AnalysisText text={narrative.conclusion} />
                 </div>
