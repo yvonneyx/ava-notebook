@@ -266,7 +266,8 @@ export default function App() {
   const classicCases = runs.filter(
     (item) => item.caseStudy && item.status === 'completed',
   );
-  const filtered = runs.filter((item) =>
+  const historyRuns = runs.filter((item) => !item.caseStudy);
+  const filtered = historyRuns.filter((item) =>
     `${item.question} ${item.source.name}`
       .toLowerCase()
       .includes(search.toLowerCase()),
@@ -317,9 +318,9 @@ export default function App() {
           <ArrowUp size={14} className="new-analysis-arrow" />
         </button>
         <div className="sidebar-label">
-          最近分析 <span>{runs.length}</span>
+          最近分析 <span>{historyRuns.length}</span>
         </div>
-        {runs.length > 4 && (
+        {historyRuns.length > 4 && (
           <label className="search">
             <Search size={13} />
             <input
@@ -342,7 +343,7 @@ export default function App() {
               <strong>{item.question}</strong>
             </button>
           ))}
-          {!runs.length && <div className="history-empty">暂无分析记录</div>}
+          {!historyRuns.length && <div className="history-empty">暂无分析记录</div>}
         </nav>
         <div className="sidebar-bottom">
           <button
