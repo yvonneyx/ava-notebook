@@ -132,12 +132,12 @@ export default function Graph({
     graph.setGraph({
       rankdir: 'TB',
       nodesep: 28,
-      ranksep: 46,
+      ranksep: 36,
       marginx: 32,
       marginy: 32,
     });
     const ids = new Set(visible.map((n) => n.id));
-    visible.forEach((n) => graph.setNode(n.id, { width: 248, height: 108 }));
+    visible.forEach((n) => graph.setNode(n.id, { width: 248, height: 92 }));
     visible.forEach((n) =>
       n.parents.forEach((parent) => {
         const original = nodes.find((candidate) => candidate.id === parent);
@@ -154,7 +154,7 @@ export default function Graph({
     return new Map(
       visible.map((n) => [
         n.id,
-        { x: graph.node(n.id).x - 124, y: graph.node(n.id).y - 54 },
+        { x: graph.node(n.id).x - 124, y: graph.node(n.id).y - 46 },
       ]),
     );
   }, [signature]);
@@ -188,7 +188,7 @@ export default function Graph({
         id: node.id,
         type: 'evidence',
         width: 248,
-        height: 108,
+        height: 92,
         position: positions.get(node.id) || { x: 0, y: 0 },
         data: { evidence: node, onSelect },
         selected: selected === node.id,
