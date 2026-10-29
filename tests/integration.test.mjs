@@ -137,6 +137,31 @@ test(
     }
     try {
       await launch();
+      const classicCases = (await request('/api/runs')).filter(
+        (run) => run.caseStudy,
+      );
+      assert.deepEqual(classicCases.map((run) => run.id).sort(), [
+        '36053ce8-7ce7-4059-9391-51b3cd1c6376',
+        'case-regional-sales',
+      ]);
+      const secondSession = await fetch(`${url}/api/session`);
+      const secondCookie = secondSession.headers
+        .get('set-cookie')
+        .split(';')[0];
+      const secondCases = await request('/api/runs', undefined, {
+        headers: { Cookie: secondCookie },
+      });
+      assert.deepEqual(
+        secondCases.filter((run) => run.caseStudy),
+        classicCases,
+      );
+      for (const entry of classicCases) {
+        const detail = await request(`/api/runs/${entry.id}`);
+        assert.equal(detail.status, 'completed');
+        assert.ok(detail.nodes.some((node) => node.kind === 'result'));
+        assert.ok(detail.nodes.some((node) => node.kind === 'conclusion'));
+      }
+      assert.equal(prompts.length, 0);
       const forbidden = await fetch(url + '/api/runs', {
         headers: { Origin: 'https://evil.example' },
       });

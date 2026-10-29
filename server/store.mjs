@@ -1,12 +1,86 @@
-import { mkdir, readFile, writeFile, rename, readdir } from 'node:fs/promises';
+import {
+  mkdir,
+  readFile,
+  writeFile,
+  rename,
+  readdir,
+  chmod,
+} from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { randomUUID, createHash } from 'node:crypto';
+import { DatabaseSync } from 'node:sqlite';
 import { parse } from 'csv-parse/sync';
 
 export const root = resolve(process.env.NOTEBOOK_DATA_DIR || '.ava-notebook');
 export const validId = (id) =>
   typeof id === 'string' && /^[a-zA-Z0-9-]{1,100}$/.test(id);
 export const digest = (data) => createHash('sha256').update(data).digest('hex');
+let database;
+function openDatabase() {
+  return (database ??= (async () => {
+    await mkdir(root, { recursive: true });
+    const path = join(root, 'notebook.sqlite');
+    const db = new DatabaseSync(path);
+    try {
+      await chmod(path, 0o600);
+      db.exec(`
+        PRAGMA busy_timeout = 5000;
+        PRAGMA journal_mode = WAL;
+        CREATE TABLE IF NOT EXISTS runs (
+          id TEXT PRIMARY KEY,
+          created_at TEXT NOT NULL,
+          body TEXT NOT NULL CHECK(json_valid(body))
+        );
+      `);
+      return db;
+    } catch (error) {
+      db.close();
+      throw error;
+    }
+  })().catch((error) => {
+    database = undefined;
+    throw error;
+  }));
+}
+
+export async function initializeStore() {
+  const db = await openDatabase();
+  const dir = join(root, 'runs');
+  await mkdir(dir, { recursive: true });
+  const legacy = [];
+  for (const entry of await readdir(dir, { withFileTypes: true })) {
+    if (!entry.isDirectory() || !validId(entry.name)) continue;
+    if (db.prepare('SELECT 1 FROM runs WHERE id = ?').get(entry.name)) continue;
+    try {
+      const run = JSON.parse(
+        await readFile(join(dir, entry.name, 'run.json'), 'utf8'),
+      );
+      if (run.id !== entry.name) throw new Error('分析记录 ID 与目录不一致');
+      legacy.push(run);
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+    }
+  }
+  // Keep the old JSON files as backups; never overwrite newer database records.
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    const insert = db.prepare(
+      'INSERT OR IGNORE INTO runs (id, created_at, body) VALUES (?, ?, ?)',
+    );
+    for (const run of legacy)
+      insert.run(run.id, run.createdAt, JSON.stringify(run));
+    db.exec('COMMIT');
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
+}
+
+export async function closeStore() {
+  if (!database) return;
+  (await database).close();
+  database = undefined;
+}
 export async function atomicJSON(path, value) {
   await mkdir(resolve(path, '..'), { recursive: true });
   const temporary = `${path}.${randomUUID()}.tmp`;
@@ -17,20 +91,28 @@ export const runDir = (id) => {
   if (!validId(id)) throw new Error('Invalid task id');
   return join(root, 'runs', id);
 };
-export const saveRun = (run) =>
-  atomicJSON(join(runDir(run.id), 'run.json'), run);
+export async function saveRun(run) {
+  if (!validId(run.id)) throw new Error('Invalid task id');
+  const db = await openDatabase();
+  db.prepare(
+    `INSERT INTO runs (id, created_at, body) VALUES (?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET created_at = excluded.created_at, body = excluded.body`,
+  ).run(run.id, run.createdAt, JSON.stringify(run));
+}
 export async function readRun(id) {
-  return JSON.parse(await readFile(join(runDir(id), 'run.json'), 'utf8'));
+  if (!validId(id)) throw new Error('Invalid task id');
+  const db = await openDatabase();
+  const row = db.prepare('SELECT body FROM runs WHERE id = ?').get(id);
+  if (!row)
+    throw Object.assign(new Error('未找到分析记录'), { code: 'ENOENT' });
+  return JSON.parse(row.body);
 }
 export async function listRuns() {
-  await mkdir(join(root, 'runs'), { recursive: true });
-  const entries = await readdir(join(root, 'runs'), { withFileTypes: true });
-  const runs = await Promise.all(
-    entries
-      .filter((e) => e.isDirectory() && validId(e.name))
-      .map((e) => readRun(e.name)),
-  );
-  return runs.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const db = await openDatabase();
+  return db
+    .prepare('SELECT body FROM runs ORDER BY created_at DESC')
+    .all()
+    .map((row) => JSON.parse(row.body));
 }
 export async function saveCheckpoint(run, key, checkpoint) {
   if (!validId(key)) throw new Error('Invalid checkpoint id');
