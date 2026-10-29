@@ -179,7 +179,7 @@ export default function Graph({
         target: n.id,
         type: 'smoothstep',
         markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14 },
-        style: { stroke: '#b8c6bc', strokeWidth: 1.3 },
+        style: { stroke: '#b6cbd9', strokeWidth: 1.3 },
       })),
   );
   return (
@@ -204,7 +204,7 @@ export default function Graph({
       minZoom={0.2}
       maxZoom={1.5}
     >
-      <Background color="#dce1da" gap={22} size={1} />
+      <Background color="#d9e7f0" gap={22} size={1} />
       <Controls showInteractive={false} position="bottom-left" />
     </ReactFlow>
   );

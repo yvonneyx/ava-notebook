@@ -14,7 +14,6 @@ import {
   ArrowDown,
   PanelLeft,
   Database,
-  ShieldCheck,
   ArrowRight,
   Paperclip,
   FileSpreadsheet,
@@ -34,8 +33,6 @@ import {
   Search,
   ChevronRight,
   NotebookPen,
-  Feather,
-  Table2,
 } from 'lucide-react';
 import { api, post } from './api';
 import type { Run, Source, Mode, Session, Evidence } from './types';
@@ -340,14 +337,7 @@ export default function App() {
               className={`history-item ${run?.id === item.id ? 'current' : ''}`}
               onClick={() => void act(() => openRun(item.id))}
             >
-              <BookOpen size={15} />
-              <div>
-                <strong>{item.question}</strong>
-                <span>
-                  {item.source.name} · {statusLabels[item.status]}
-                </span>
-              </div>
-              {isActive(item) && <i className="live-dot" />}
+              <strong>{item.question}</strong>
             </button>
           ))}
           {!runs.length && <div className="history-empty">暂无分析记录</div>}
@@ -373,7 +363,10 @@ export default function App() {
           </button>
         </div>
       </aside>
-      <main className="main" inert={sidebarOpen}>
+      <main
+        className={`main ${run ? 'analysis-page' : 'home-page'}`}
+        inert={sidebarOpen}
+      >
         <header
           className="topbar"
           style={{ viewTransitionName: 'persistent-topbar' }}
@@ -412,37 +405,21 @@ export default function App() {
           key={run?.id || 'home'}
           default="none"
           enter={{
-            'nav-forward': 'nav-forward',
-            'nav-back': 'nav-back',
-            default: 'fade-in',
+            'nav-forward': 'page-surface nav-forward',
+            'nav-back': 'page-surface nav-back',
+            default: 'page-surface fade-in',
           }}
           exit={{
-            'nav-forward': 'nav-forward',
-            'nav-back': 'nav-back',
-            default: 'fade-out',
+            'nav-forward': 'page-surface nav-forward',
+            'nav-back': 'page-surface nav-back',
+            default: 'page-surface fade-out',
           }}
         >
           {!run ? (
             <div className="home">
               <div className="home-content">
                 <div className="home-heading">
-                  <div>
-                    <span className="page-kicker">
-                      <Feather size={14} /> 留一点空间，给新的发现
-                    </span>
-                    <h1>今天，想探索什么？</h1>
-                  </div>
-                  <div className="notebook-emblem" aria-hidden="true">
-                    <span className="emblem-sheet">
-                      <Table2 size={23} strokeWidth={1.4} />
-                    </span>
-                    <span className="emblem-cover">
-                      <NotebookPen size={29} strokeWidth={1.5} />
-                    </span>
-                    <span className="emblem-check">
-                      <Check size={13} strokeWidth={2.5} />
-                    </span>
-                  </div>
+                  <h1><span>用一句话，</span><span>读懂你的数据。</span></h1>
                 </div>
                 <section
                   className={`compose-card ${dragging ? 'dragging' : ''}`}
@@ -469,7 +446,7 @@ export default function App() {
                     aria-label="分析问题"
                     value={question}
                     onChange={(e) => setQuestion(e.target.value)}
-                    placeholder="例如：销售额为什么下降？主要受哪些产品影响？"
+                    placeholder="输入你想分析的问题…"
                     maxLength={8000}
                     onKeyDown={(e) => {
                       if ((e.metaKey || e.ctrlKey) && e.key === 'Enter')
@@ -608,7 +585,7 @@ export default function App() {
                         <LoaderCircle size={15} className="spin" />
                       ) : null}
                       <span className="start-label">开始分析</span>
-                      {!busy && <ArrowUp size={16} />}
+                      {!busy && <ArrowRight size={15} />}
                     </button>
                   </div>
 
@@ -640,10 +617,6 @@ export default function App() {
                     <ArrowRight size={14} />
                   </button>
                 )}
-                <p className="privacy-note">
-                  <ShieldCheck size={13} />
-                  记录保存在本机，分析上下文发送至所选模型。
-                </p>
                 {runs.length > 0 && (
                   <section className="recent-section">
                     <div className="recent-heading">
@@ -661,13 +634,7 @@ export default function App() {
                             <BookOpen size={17} />
                           </span>
                           <span className="recent-title">
-                            <ViewTransition
-                              name={`run-title-${item.id}`}
-                              share="text-morph"
-                              default="none"
-                            >
-                              <strong>{item.question}</strong>
-                            </ViewTransition>
+                            <strong>{item.question}</strong>
                             <small>{item.source.name}</small>
                           </span>
                           <span className={`status status-${item.status}`}>
@@ -703,13 +670,7 @@ export default function App() {
                       {run.source.name}
                     </span>
                   </div>
-                  <ViewTransition
-                    name={`run-title-${run.id}`}
-                    share="text-morph"
-                    default="none"
-                  >
-                    <h1 title={run.question}>{run.question}</h1>
-                  </ViewTransition>
+                  <h1 title={run.question}>{run.question}</h1>
                   <div className="task-meta">
                     <span>{run.nodes.length} 个步骤</span>
                     <span>
