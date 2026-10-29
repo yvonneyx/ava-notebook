@@ -1,30 +1,25 @@
-import { remoteApi, subscribeRemoteRun } from './remote';
-import type { RunObserver } from './remote';
-export const browserMode = import.meta.env.MODE === 'static';
+import type { Run } from '../../shared/contracts';
+import type { RunUpdate } from '../domain/run-updates';
+import { readLocal, writeLocal } from './indexed-db';
+import { subscribeBrowserRun } from './browser-jobs';
+
+export type RunObserver = {
+  onConnection: (connected: boolean) => void;
+  onSnapshot: (run: Run) => void;
+  onUpdate: (update: RunUpdate) => void;
+};
 
 export async function api<T = any>(
   path: string,
   options: RequestInit = {},
 ): Promise<T> {
-  if (browserMode) {
-    const { browserApi } = await import('./static');
-    return browserApi<T>(path, options);
-  }
-  return remoteApi<T>(path, options);
+  const { browserApi } = await import('./browser');
+  return browserApi<T>(path, options);
 }
 export const post = <T = any>(path: string, body: unknown) =>
   api<T>(path, { method: 'POST', body: JSON.stringify(body) });
 
-export function subscribeRun(id: string, observer: RunObserver) {
-  return browserMode ? undefined : subscribeRemoteRun(id, observer);
-}
-export async function readDraft<T>() {
-  if (!browserMode) return undefined;
-  const { readLocal } = await import('./indexed-db');
-  return readLocal<T>('drafts', 'composer');
-}
-export async function saveDraft(draft: unknown) {
-  if (!browserMode) return;
-  const { writeLocal } = await import('./indexed-db');
-  await writeLocal('drafts', 'composer', draft);
-}
+export const subscribeRun = subscribeBrowserRun;
+export const readDraft = <T>() => readLocal<T>('drafts', 'composer');
+export const saveDraft = (draft: unknown) =>
+  writeLocal('drafts', 'composer', draft);

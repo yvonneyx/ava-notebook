@@ -1,7 +1,6 @@
 node_modules/
 .env
 .env.*
-!.env.example
 .DS_Store
 dist/
 dist-static/
@@ -9,3 +8,5 @@ dist-static/
 .ava-notebook/
 .history/
 .lh/
+test-results/
+playwright-report/

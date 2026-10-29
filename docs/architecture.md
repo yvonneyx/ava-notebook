@@ -2,65 +2,41 @@
 
 [项目介绍](../README.md) · [开发与运行说明](development.md)
 
-保持一个 npm 项目和两种运行模式，按页面、业务功能和运行环境划分职责。
+Notebook 是单个 Vite / React 项目，只有浏览器 Wasm 运行方式。`npm run build` 输出 `dist/`，开发、预览和 Vercel 部署使用相同代码。
 
 ```text
 src/
 ├── main.tsx                  # 浏览器入口和全局样式
-├── app/                      # 应用装配、页面切换、外壳和全局错误
-├── pages/
-│   ├── home/                 # 首页、经典案例、背景动效
-│   └── analysis/             # 分析页、工具栏、记录状态和实时订阅
-├── features/
-│   ├── composer/             # CSV 输入、问题、策略和草稿
-│   ├── notebook/             # 分析笔记、步骤归组
-│   ├── graph/                # 证据图谱和布局
-│   ├── evidence/             # 证据详情、数据和图表视图
-│   ├── history/              # 历史列表、搜索和删除
-│   └── settings/             # 模型配置和会话状态
-├── domain/                   # 证据关系、状态和增量合并的纯函数
-├── runtime/                  # 统一调用入口、本地 HTTP/SSE、静态模式、IndexedDB
-├── ui/                       # 数据表、柱状图、Markdown、SQL、状态标签
-└── styles/                   # 全局变量、基础样式、布局和转场
+├── app/                      # 应用装配、页面切换和全局错误
+├── pages/                    # 首页、分析页及实时订阅
+├── features/                 # 输入、笔记、图谱、证据、历史和模型配置
+├── domain/                   # 证据关系、状态与增量合并的纯函数
+├── runtime/                  # 浏览器调用入口、Worker、IndexedDB
+├── ui/                       # 数据表、图表、Markdown、SQL、状态
+└── styles/                   # 全局变量、布局和转场
 shared/
-└── contracts.ts              # Source、Run、Evidence、Session 数据类型
-server/
-├── index.mjs                 # 端口、启动和退出信号
-├── app.mjs                   # Fastify 装配及资源生命周期
-├── http/                     # 安全边界、路由、SSE 和前端托管
-├── analysis/                 # 任务调度、worker 和 AVA 事件投影
-├── storage/                  # 文件工具、CSV 快照、SQLite 记录
-└── examples/                 # 经典案例初始化和销售案例导入
+├── contracts.ts              # Source、Run、Evidence、Session 类型
+└── evidence.mjs              # AVA 事件到笔记和图谱节点的投影
 examples/
-├── sales/                    # 销售 CSV、业务语义和问题
-└── classic/
-    ├── recordings.json       # 预录响应和数据入口
-    ├── datasets/             # 案例输入 CSV
-    └── generated/cases.json  # 由当前 AVA 生成的内置分析记录
+├── sales/                    # 合成销售数据、语义和问题
+└── classic/                  # 预录响应、输入 CSV 和内置分析记录
 tests/
-├── frontend/                # 视图、布局、CSV 解析和运行环境边界
-├── server/                  # 事件、任务、存储、案例
-├── integration/             # HTTP、SSE、真实 AVA / DuckDB 和重启恢复
-└── fixtures/                # 测试事件和数据基准
-scripts/                     # 案例生成脚本
-docs/                        # 架构和开发说明
+├── frontend/                 # 视图、布局、CSV 和浏览器调用边界
+├── domain/                   # 事件投影、内置案例与结果核对
+├── browser/                  # 真实 Wasm、生产页面、性能与容错
+└── fixtures/                 # 测试事件和数据基准
+scripts/                      # 案例生成
+vendor/                       # 固定的完整 AVA npm 包
 ```
 
-功能样式放在对应页面或功能目录中，由 `src/styles/index.css` 统一引入，保留原有全局类名。图谱组件、静态 CSV 解析器和内置案例数据仍按需加载。
+`app` 组合页面和业务功能，`pages` 组合 `features`，展示组件使用 `ui`，业务计算使用 `domain`。功能样式仍由 `src/styles/index.css` 统一引入，图谱和内置案例按需加载。
 
-## 调用方向
+`runtime/client.ts` 提供统一入口；`browser.ts` 实现浏览器操作，`browser-jobs.ts` 调度任务、写入 IndexedDB 并分发更新。操作路径仅用于内部调用，不发送 Notebook HTTP 请求，也不建立 SSE 连接。`csv.worker.ts` 完成 CSV 校验、解析和指纹计算，主页面只接收元信息及 5 行预览。
 
-- `app` 负责组合页面和功能，保存跨页面的输入草稿及会话状态。
-- `pages` 组合 `features`；展示组件使用 `ui`，业务计算使用 `domain`。
-- 网络、事件流和浏览器存储通过 `runtime/client.ts` 进入；`remote.ts` 管理 HTTP/SSE，`static.ts` 实现静态能力，`indexed-db.ts` 管理本地持久化。
-- `domain` 只依赖共享类型，不依赖 React、DOM、网络或服务端模块。
-- 服务端由 `app.mjs` 装配：HTTP 层负责请求校验和协议，analysis 层负责执行与事件，storage 层负责持久化。浏览器不导入服务端模块。
-- `shared/contracts.ts` 描述现有数据格式；服务端仍使用 JavaScript 和现有请求校验，不引入新的运行时 schema。
+`analysis.worker.ts` 只导入 `@antv/ava/duckdb-wasm`。保留完整 AVA 依赖，由 Vite 打包实际使用的 Wasm 入口；Notebook 不启动 Node 引擎或后端。同级 AVA 项目自身的其他引擎不受影响。Wasm 和 DuckDB worker 随应用同源发布；每条查询默认 30 秒超时，停止会终止整个分析 Worker。
 
-## 保持兼容的边界
+`shared/evidence.mjs` 消费新版 AVA 事件，同一投影供实际分析、经典案例生成及回归测试使用。导出格式、案例 ID、IndexedDB 名称及版本保持不变。旧服务端数据不自动迁入浏览器，也不会被删除。
 
-这次重组不改变 API 路径、SSE 事件、证据导出结构或分析策略。完整版本仍执行 Direct / Loop；静态版本仍提供 CSV 导入、草稿、案例、图表保存与导出，不执行模型查询。
+Web Locks 标识仍在其他标签页运行的任务，刷新仅将失去锁的任务标为中断。独立锁串行化同一分析的图表保存与删除；BroadcastChannel 推送更新。保存失败时结束任务，页面内存暂留未保存证据供导出。模型配置和 Key 仅保留在页面内存。
 
-持久化位置保持 `.ava-notebook/`，SQLite 仍使用 `direct_runs` 表。浏览器继续使用 `ava-notebook-direct` 数据库及版本 1，不清空用户草稿或图表。案例 ID 和生成内容保持不变，服务启动仍只导入缺失案例。
-
-日常验证命令见[开发说明](development.md#验证)。迁移目录时同时更新生成脚本、案例数据入口和测试路径；不通过重新生成案例来掩盖文件移动造成的差异。
+日常验证与限制见[开发说明](development.md#验证)。

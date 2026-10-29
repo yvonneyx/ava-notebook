@@ -2,38 +2,29 @@
 
 [返回项目介绍](../README.md) · [目录与依赖边界](architecture.md)
 
-## 本地完整版本
+## 开发与构建
 
-需要 Node.js 22.13+，以及同级目录中已构建的 AVA：
-
-```text
-Documents/
-├── AVA/
-└── ava-notebook/
-```
+需要 Node.js 22.13+。Notebook 只有浏览器 Wasm 版本，使用同一套命令进行开发、构建和预览：
 
 ```sh
-cd ~/Documents/AVA
-nvm use 22
-npm install
-npm run build
-
-cd ../ava-notebook
 nvm use
-npm install
+npm ci
 npm run dev
+npm run build
+npm run preview
 ```
 
-默认地址为 `http://127.0.0.1:4317`。`@antv/ava` 链接到 `../AVA`；修改 AVA 后重新构建并重启 Notebook。
+Vite 默认开发地址为 `http://localhost:5173`，构建产物位于 `dist/`。无需启动后端、数据库或配置服务端环境变量。`vercel.json` 使用 `npm run build` 和 `dist`，可从仓库部署；本地构建不会自动发布。
 
-左下角「连接分析模型」支持 OpenAI 兼容的 Chat Completions 地址、模型名称和 API Key。界面提交的密钥只保存在服务进程内，重启后失效。也可以复制 `.env.example` 为 `.env`，填写 `OPENAI_API_KEY`、`OPENAI_MODEL`、`OPENAI_BASE_URL`。不要提交 `.env`。
-
-生产运行：
+仓库的 `vendor/antv-ava-4.0.0-beta.3.tgz` 固定本次完整 AVA 构建，部署无需访问同级 AVA 目录。Notebook 只导入 `@antv/ava/duckdb-wasm`；AVA 自身的其他引擎保持原样，不进入前端构建。修改 SDK 后更新固定依赖：
 
 ```sh
-npm run build
-npm start
+pnpm --dir ../AVA build
+(cd ../AVA && pnpm pack --pack-destination ../ava-notebook/vendor)
+npm install ./vendor/antv-ava-4.0.0-beta.3.tgz
 ```
+
+左下角「连接分析模型」填写 OpenAI 兼容的 Chat Completions 地址、模型名称和 API Key。模型设置及 Key 只在页面内存中保留，刷新后需重新配置。模型接口必须允许浏览器跨域调用，HTTPS 页面应使用 HTTPS 模型地址。问题、数据结构和查询结果等上下文会发往用户选择的模型服务。
 
 ## 分析策略
 
@@ -46,7 +37,7 @@ npm start
 ### 事件字段
 
 ```ts
-const ava = new AVA({ llm });
+const ava = new AVA({ llm, engine: { type: 'duckdb-wasm', bundles } });
 ava.on('*', (event) => collect(event));
 await ava.analyze(question, {
   strategy: { type: 'loop' }, // 或 direct，由输入区选择
@@ -82,17 +73,16 @@ await ava.analyze(question, {
 
 ## 数据与运行边界
 
-- CSV：UTF-8、唯一非空表头，最多 10 MB / 100,000 行；支持引号、换行和 UTF-8 BOM。保存独立快照及指纹。
-- DuckDB：只读查询，默认 30 秒查询超时、512 MB 内存限制；结果最多 200 行 / 1 MiB，保留截断标记。
-- 运行：同一时间执行一个分析。模型调用不额外设置 Notebook 超时；停止会结束 worker。服务重启将未完成记录标为中断，可用同一 CSV 重新分析。
-- 持久化：`.ava-notebook/notebook.sqlite` 的 `direct_runs` 表保存新格式记录，使用事务与 WAL。CSV 和语义快照在同一数据目录中；备份时保留整个目录。旧 `runs` 表、旧 JSON 和检查点不参与加载。
-- 刷新恢复：SSE 提供快照和节点更新；创建与停止支持请求 ID 去重。保存失败会结束 worker。
-- 访问：仅监听回环地址，校验 Host、Origin 和会话 Cookie。密钥不写入证据导出。
-- 导出：JSON 包含事件、节点和输入输出，可能包含业务数据。分析上下文会发往配置的模型服务。
+- CSV：UTF-8、唯一非空表头，最多 10 MB / 100,000 行 / 200 个字段；支持引号、换行和 UTF-8 BOM。CSV 解析及指纹计算在独立 Worker 中进行。
+- DuckDB-Wasm：只读 SQL，默认 30 秒查询超时、512 MB 内存限制；结果最多 200 行 / 1 MiB，保留截断标记。Wasm 和 worker 与页面同源托管，首次分析按需下载；单线程版本无需额外的 COOP / COEP 响应头。
+- 运行：一个标签页同时执行一个分析。停止会终止分析 Worker；刷新或关闭页面会中断任务。下次打开保留已保存步骤，可重新分析。Wasm 下载及初始化有 60 秒截止时间。
+- 持久化：CSV、草稿、分析、图表保存在 `ava-notebook-direct` IndexedDB 版本 1，继续使用原格式。清除浏览器网站数据会清空个人记录。旧服务端 `.ava-notebook/` 数据不会自动迁入浏览器，也不会被删除。
+- 多标签页：Web Locks 识别其他页面中的活跃任务，并串行化同一分析的图表保存与删除；BroadcastChannel 分发更新。
+- 保存失败：终止任务，页面内存暂留未保存证据供 JSON 导出。导出包含事件、节点和输入输出，可能包含业务数据；密钥不写入存储或导出。
 
 ## 销售案例数据
 
-首页「探索销售经营案例」导入 `examples/sales/` 下的 `sales-case.csv`、`sales-semantic.yaml` 和 `sales-question.txt`，提供 1,416 行合成销售数据、业务口径和分析问题。worker 在加载 CSV、结构、语义和质量统计后执行所选策略。普通 CSV 不会自动套用这份语义。
+`examples/sales/` 提供 `sales-case.csv`、`sales-semantic.yaml` 和 `sales-question.txt`，包括 1,416 行合成数据、业务口径和问题，供案例生成与回归校验。普通 CSV 上传不会自动套用这份语义。
 
 数据覆盖退款空值、零访问日、月份天数差异、正负贡献抵消，以及广告后经营贡献和净利润的区别。案例文件不预写 SQL 或答案；问题较复杂时，direct 的单次查询可能无法覆盖所有分析要求，应结合返回的证据局限判断结果。
 
@@ -100,32 +90,42 @@ await ava.analyze(question, {
 
 ### 经典案例回顾
 
-首页预装「销售额高就更赚钱吗」（Direct 快速模式）、「各地区销售额对比」和「2 月业绩下滑归因」（Loop 探索模式）。快速案例用一次商品汇总查询比较销售额、利润、利润率及利润占比，SQL 与总结是基于查询结果编写的预设示例，不冒充真实模型调用；其余案例沿用预录模型回应。`examples/classic/recordings.json` 保存各案例的策略、回应、输入数据和说明；生成脚本让当前 AVA 实际执行 SQL，`examples/classic/generated/cases.json` 保存完整新事件、节点和结论。服务首次启动导入尚不存在的案例及其 CSV 快照，重复启动不会覆盖已保存图表；案例与个人历史分开展示。
+首页预装「销售额高就更赚钱吗」（Direct 快速模式）、「各地区销售额对比」和「2 月业绩下滑归因」（Loop 探索模式）。快速案例用一次商品汇总查询比较销售额、利润、利润率及利润占比，SQL 与总结是基于查询结果编写的预设示例，不冒充真实模型调用；其余案例沿用预录模型回应。`examples/classic/recordings.json` 保存各案例的策略、回应、输入数据和说明；生成脚本让当前 AVA 实际执行 SQL，`examples/classic/generated/cases.json` 保存完整新事件、节点和结论。页面按需读取内置案例；保存图表时在 IndexedDB 中记录个人副本，重新打开保留修改；案例与个人历史分开展示。
 
-重新生成案例：`node scripts/generate-classic-cases.mjs`，无需模型密钥。脚本按各案例声明的 Direct 或 Loop 策略执行，全部完成后才更新内置记录。它不读取旧事件或检查点，也不会在用户打开页面时调用模型。
-
-## 静态浏览器版本
-
-```sh
-npm run build:static
-npm run preview:static -- --host 127.0.0.1 --port 4318
-```
-
-产物位于 `dist-static/`，开发使用 `npm run dev:static`。静态版本没有查询引擎，支持 CSV 导入、问题草稿及同一份新版经典案例回顾；不请求 `/api` 或调用模型。浏览器保存的图表覆盖记录保留在 `ava-notebook-direct` IndexedDB，内置案例按需加载。模型设置与密钥只保留在页面内存。
-
-现有线上地址为 https://ava-notebook.vercel.app 。本地构建不会自动发布。发布命令：
-
-```sh
-vercel link --cwd dist-static --yes --project ava-notebook --scope yuxins-projects-e2c1f66b
-vercel deploy --cwd dist-static --prod --yes --scope yuxins-projects-e2c1f66b
-```
+重新生成案例：`node scripts/generate-classic-cases.mjs`，需要本机 Chrome，无需模型密钥。使用 `--check` 可通过真实浏览器 Wasm 重放并核对结果，不改写内置记录。脚本按各案例声明的 Direct 或 Loop 策略执行，全部完成后才更新内置记录。它不读取旧事件或检查点，也不会在用户打开页面时调用模型。
 
 ## 验证
 
 ```sh
-npm run build
-npm run build:static
 npm test
+npm run test:browser
+node scripts/generate-classic-cases.mjs --check
 ```
 
-测试覆盖新事件配对、步骤依赖、多查询探索、无查询修正、独立步骤状态、SQL 重试、总结引用、Loop 核验与最终尝试、失败、停止、图表和 SQLite 保存。端到端测试运行真实 AVA / DuckDB，使用临时本地模型服务，验证两种策略、SSE、导出、服务重启、语义快照和凭证脱敏，不访问真实模型服务。
+本次干净安装、默认生产构建、28 项单元测试、Chrome 22 项浏览器测试、Firefox 4 项核心测试和 3 个经典案例 Wasm 重放均通过。
+
+单元测试覆盖事件配对、步骤依赖、SQL 重试证据、Loop 核验、视图、CSV 校验及浏览器调用边界。原生 DuckDB / HTTP / SQLite 测试已随服务端移除；销售数据与语义会计核对迁到真实 Wasm 浏览器测试。
+
+浏览器测试使用本机 Chrome（Playwright `channel: chrome`），同时验证开发环境中的真实 Wasm 引擎及生产构建的 Notebook。模型由本地模拟服务提供，不消耗真实模型额度。测试覆盖 SQL 只读边界、结果截断与精度、Direct 重试、Loop 核验、图表与图谱、导出、停止、跨标签页保护、刷新恢复、Key 脱敏、跨域失败、查询超时和存储失败。
+
+当前 `npm audit --omit=dev` 仍报告已有的 zod 高危项（[GHSA-mrhx-c7xc-m3w5](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5)，超大受约束集合校验可能耗尽内存），并将其传播标记到固定 AVA 包。此次未升级 zod 主版本；公开上线前需单独评估并处理。
+
+## 浏览器性能与容错验证（2026-10-30）
+
+Chrome 无头浏览器，本地生产预览，CPU 降速 4 倍；模型使用本地模拟接口，不包含真实模型推理和公网延迟。大 CSV 使用真实磁盘文件选择，避免 Playwright 传输大 Buffer 的开销混入页面指标。
+
+| 场景 | 实测 |
+| --- | --- |
+| 首页可以操作 | 约 1.1–1.4 秒，首页不加载 Wasm |
+| 7.1 MB、100,000 行、10 列 CSV 导入 | 约 0.5–1.1 秒；整段页面最长主线程任务约 75–94 毫秒 |
+| 100,000 行分析，连续 5 次 | 多轮采样约 1.1–2.3 秒（点击到完成，包含测试轮询开销及本机负载波动） |
+| 5 次分析前后主线程 JS 堆（强制 GC 后） | 4.41 MB → 6.77 MB；不代表 Wasm Worker 的总内存 |
+| 300 条历史记录后重新打开 | 约 0.7–0.8 秒 |
+
+CSV 解析移入独立 Worker；分析仍在独立 Worker 内。超宽 CSV 在解析时拒绝，避免数千列预览阻塞页面。Wasm 下载及引擎初始化有 60 秒截止时间；下载失败、缺失 worker 脚本会明确失败，可重新开始。慢网下载中停止不会收到后续完成事件。
+
+Web Locks 将图表保存/删除的完整读改写过程串行化，避免两个标签页互相覆盖；BroadcastChannel 推送跨标签页的分析更新。保存失败仍可导出未保存的页面内证据。异常 run 链接可以回到新建分析，390×844 的页面可以导入文件及配置模型。
+
+复测：`npm run test:browser`。跨浏览器可用 `NOTEBOOK_TEST_BROWSER=webkit` 或 `firefox` 配合 `playwright install`；性能采样用 Chrome CDP。测试不等同于真实低内存手机、公网 CDN 和任意模型服务的性能保证。首次分析仍需下载约 36 MB 的 Wasm 文件（构建统计 gzip 约 8.1 MB）；首次使用的公网等待时间会受网络影响。
+
+跨浏览器限制：本轮 Chrome 完整流程与性能测试通过。匹配测试工具版本的 WebKit 进程在页面打开前被本机系统终止，因此不将 Safari/WebKit 标记为通过。Firefox 的跨域失败通过最小实验定位为 SDK 的自定义 User-Agent 请求头，AVA 已在浏览器请求中移除该多余头；修复后 Direct（含重试、图表、图谱、导出及恢复）、Loop、移动布局和销售语义/会计核对通过。本机复测时曾发生一次创建空白页面阶段的 Firefox 进程崩溃，Loop 单独重跑及最终整轮 4 项测试均通过。仍未覆盖真实手机内存压力。

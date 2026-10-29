@@ -175,7 +175,16 @@ export function completeRun(run, result) {
     payload: { ...result, conclusion },
   });
   run.activeNodeId = node.id;
-  run.result = result;
+  run.result = {
+    ...result,
+    ...(summary
+      ? Object.fromEntries(
+          ['queryExplanation', 'limitations', 'conclusion', 'nextStep']
+            .filter((key) => summary.payload[key] !== undefined)
+            .map((key) => [key, summary.payload[key]]),
+        )
+      : {}),
+  };
   run.status = 'completed';
   return node;
 }

@@ -4,7 +4,7 @@
 
 基于 [AVA](https://github.com/antvis/ava) 的数据分析工作台。上传 CSV，用自然语言提问，AVA 自动探索数据、执行 SQL，Notebook 将过程整理成可回看的分析笔记。
 
-[在线体验](https://ava-notebook.vercel.app) · 本地支持 Direct 快速分析和 Loop 深入分析；静态版本支持 CSV 导入和问题草稿，尚未接入查询执行。
+[在线体验](https://ava-notebook.vercel.app) · 支持 Direct 快速分析和 Loop 深入分析。使用 DuckDB-Wasm 在浏览器执行 SQL，用户自行配置模型，CSV 和分析记录保存在自己的浏览器中。
 
 ## 在笔记中查看分析过程
 

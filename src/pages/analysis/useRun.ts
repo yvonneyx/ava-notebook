@@ -16,7 +16,11 @@ export function useRun(
     return subscribeRun(id, {
       onConnection: setConnected,
       onSnapshot: (snapshot) =>
-        setRun((current) => (current?.id === id ? snapshot : current)),
+        setRun((current) =>
+          current?.id === id && snapshot.revision >= current.revision
+            ? snapshot
+            : current,
+        ),
       onUpdate: (update) => {
         setRun((current) => mergeRunUpdate(current, id, update));
         updateHistory(id, update.metadata);

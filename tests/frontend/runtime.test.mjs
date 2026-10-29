@@ -1,24 +1,21 @@
+import 'fake-indexeddb/auto';
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'vite';
 
-let server, staticServer, mergeRunUpdate, remote, client;
+let server, mergeRunUpdate, client;
 before(async () => {
-  const options = () => ({
+  server = await createServer({
     server: { middlewareMode: true, hmr: false, ws: false, watch: null },
     appType: 'custom',
   });
-  server = await createServer(options());
-  staticServer = await createServer({ ...options(), mode: 'static' });
   ({ mergeRunUpdate } = await server.ssrLoadModule(
     '/src/domain/run-updates.ts',
   ));
-  remote = await server.ssrLoadModule('/src/runtime/remote.ts');
-  client = await staticServer.ssrLoadModule('/src/runtime/client.ts');
+  client = await server.ssrLoadModule('/src/runtime/client.ts');
 });
 after(async () => {
   await server?.close();
-  await staticServer?.close();
 });
 
 function mockEventSource(t, implementation) {
@@ -68,57 +65,21 @@ test('live updates ignore stale revisions and previous runs, merging nodes by id
   assert.equal(current.nodes.length, 1);
 });
 
-test('remote subscriptions forward connection, snapshot and update events and close on cleanup', (t) => {
-  let stream;
-  mockEventSource(
-    t,
-    class {
-      constructor(url) {
-        this.url = url;
-        this.listeners = new Map();
-        stream = this;
-      }
-      addEventListener(name, listener) {
-        this.listeners.set(name, listener);
-      }
-      close() {
-        this.closed = true;
-      }
-    },
-  );
-  const connections = [],
-    snapshots = [],
-    updates = [];
-  const cleanup = remote.subscribeRemoteRun('run-a', {
-    onConnection: (value) => connections.push(value),
-    onSnapshot: (value) => snapshots.push(value),
-    onUpdate: (value) => updates.push(value),
-  });
-  assert.equal(stream.url, '/api/runs/run-a/events');
-  stream.onopen();
-  stream.onerror();
-  stream.listeners.get('snapshot')({ data: '{"id":"run-a","revision":4}' });
-  stream.listeners.get('update')({
-    data: '{"metadata":{"revision":5},"nodes":[]}',
-  });
-  assert.deepEqual(connections, [true, false]);
-  assert.deepEqual(snapshots, [{ id: 'run-a', revision: 4 }]);
-  assert.deepEqual(updates, [{ metadata: { revision: 5 }, nodes: [] }]);
-  cleanup();
-  assert.equal(stream.closed, true);
-});
-
-test('static runtime reads its session and rejects execution without fetch or EventSource', async (t) => {
+test('browser runtime reads its session and validates requests without fetch or EventSource', async (t) => {
   const fetch = t.mock.method(globalThis, 'fetch', () => {
     throw new Error('Unexpected network request');
   });
   const events = mockEventSource(t, () => {
     throw new Error('Unexpected event stream');
   });
-  assert.equal(client.browserMode, true);
   assert.equal((await client.api('/session')).configured, false);
-  assert.equal(client.subscribeRun('run-a', {}), undefined);
-  await assert.rejects(client.post('/runs', {}), /查询引擎尚未接入/);
+  const stop = client.subscribeRun('run-a', {
+    onConnection() {},
+    onSnapshot() {},
+    onUpdate() {},
+  });
+  stop();
+  await assert.rejects(client.post('/runs', {}), /无效的请求 ID/);
   assert.equal(fetch.mock.callCount(), 0);
   assert.equal(events.mock.callCount(), 0);
 });

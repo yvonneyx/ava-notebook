@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Browser engine test</title>
+  </head>
+  <body>
+    <script type="module">
+      import { AVA, DuckDBWasmEngine } from '@antv/ava/duckdb-wasm';
+      import { MockLanguageModelV4 } from 'ai/test';
+      import { readCSV } from '/src/runtime/csv.ts';
+      import {
+        putNode,
+        applyEvent,
+        completeRun,
+        eventNodeId,
+      } from '/shared/evidence.mjs';
+      import { bundles } from '/src/runtime/duckdb-bundles.ts';
+      window.createEngine = (options = {}) =>
+        new DuckDBWasmEngine({ model: 'test' }, { bundles, ...options });
+      Object.assign(window, {
+        AVA,
+        MockLanguageModelV4,
+        readCSV,
+        putNode,
+        applyEvent,
+        completeRun,
+        eventNodeId,
+      });
+      window.bundles = bundles;
+    </script>
+  </body>
+</html>

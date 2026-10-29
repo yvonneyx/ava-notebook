@@ -6,8 +6,8 @@ import {
   ViewTransition,
 } from 'react';
 import { X } from 'lucide-react';
-import type { Run, Source } from '../../shared/contracts';
-import { api, post, browserMode } from '../runtime/client';
+import type { Run } from '../../shared/contracts';
+import { api, post } from '../runtime/client';
 import { useSession } from '../features/settings/useSession';
 import ModelSettingsDialog from '../features/settings/ModelSettingsDialog';
 import { useRunHistory } from '../features/history/useRunHistory';
@@ -101,20 +101,7 @@ export default function App() {
       await history.refresh();
     });
   }
-  async function exploreSales() {
-    if (browserMode) {
-      await openRun('case-sales-performance');
-      return;
-    }
-    const example = await post<{ source: Source; question: string }>(
-      '/examples/sales',
-      {},
-    );
-    startTransition(() => {
-      composer.setSource(example.source);
-      composer.setQuestion(example.question);
-    });
-  }
+  const exploreSales = () => openRun('case-sales-performance');
   return (
     <AppShell
       hasRun={!!run}

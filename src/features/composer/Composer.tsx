@@ -9,7 +9,6 @@ import {
 } from 'lucide-react';
 import type { Run, Session } from '../../../shared/contracts';
 import type { useComposer } from './useComposer';
-import { browserMode } from '../../runtime/client';
 import { DataTable } from '../../ui/DataTable';
 
 export default function Composer({
@@ -109,7 +108,7 @@ export default function Composer({
         <button
           className="composer-upload"
           disabled={busy}
-          title="上传 CSV · 最大 10 MB"
+          title="上传 CSV · 最大 10 MB、100,000 行、200 个字段"
           onClick={() => fileInput.current?.click()}
         >
           <Paperclip size={15} />
@@ -154,7 +153,7 @@ export default function Composer({
           aria-keyshortcuts="Meta+Enter Control+Enter"
           title="开始分析（⌘ / Ctrl + Enter）"
           className="button primary"
-          disabled={browserMode || busy || !source || !question.trim()}
+          disabled={busy || !source || !question.trim()}
           onClick={onStart}
         >
           {busy ? <LoaderCircle size={15} className="spin" /> : null}

@@ -1,6 +1,5 @@
 import { useEffect, useRef } from 'react';
 import { X, LoaderCircle, Check } from 'lucide-react';
-import { browserMode } from '../../runtime/client';
 import type { useSession } from './useSession';
 
 export default function ModelSettingsDialog({
@@ -92,9 +91,7 @@ export default function ModelSettingsDialog({
           />
         </label>
         <div className="notice">
-          {browserMode
-            ? '本次配置仅在当前页面打开期间生效。'
-            : '本次配置仅在当前服务运行期间生效。'}
+          本次配置仅在当前页面打开期间生效。
         </div>
         <button className="button primary full" disabled={busy} type="submit">
           {busy ? (

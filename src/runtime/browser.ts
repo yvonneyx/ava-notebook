@@ -1,5 +1,17 @@
 import type { Run, Session, Source } from '../../shared/contracts';
 import { readLocal, listLocal, writeLocal, deleteLocal } from './indexed-db';
+import {
+  activeRun,
+  activeRunId,
+  lock,
+  recoverRuns,
+  startBrowserRun,
+  stopBrowserRun,
+  saveBrowserRun,
+  forgetBrowserRun,
+  mutateBrowserRun,
+} from './browser-jobs';
+import { publicRun, runSummary } from '../../shared/evidence.mjs';
 import { chartPreview, evidenceDatasets } from '../domain/evidence';
 
 let model = '';
@@ -9,7 +21,8 @@ const session = (): Session => ({
   model,
   baseURL,
   configured: !!(model && apiKey),
-  build: '',
+  build: 'browser-duckdb-wasm',
+  activeRunId: activeRunId(),
 });
 
 async function classicCases(): Promise<Run[]> {
@@ -19,73 +32,69 @@ async function classicCases(): Promise<Run[]> {
 
 async function readRun(id: string) {
   return (
+    activeRun(id) ||
     (await readLocal<Run>('runs', id)) ||
     structuredClone((await classicCases()).find((run) => run.id === id))
   );
 }
 
-export async function readCSV(file: File): Promise<Source> {
-  if (!/\.csv$/i.test(file.name) || !file.size || file.size > 10 * 1024 * 1024)
-    throw new Error('请上传 1 字节至 10 MB 的 CSV 文件');
-  const bytes = await file.arrayBuffer();
-  const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
-  if (text.includes('\0')) throw new Error('CSV 必须是 UTF-8 文本');
-  const { parse } = await import('csv-parse/browser/esm/sync');
-  let count = 0;
-  const records = parse(text, {
-    bom: true,
-    skip_empty_lines: true,
-    max_record_size: 1024 * 1024,
-    on_record(record: string[]) {
-      if (++count > 100001) throw new Error('一期最多支持 100,000 行数据');
-      return count <= 6 ? record : null;
-    },
-  }) as string[][];
-  const headers = records[0];
-  if (
-    count < 2 ||
-    !headers?.length ||
-    headers.some((name) => !name.trim()) ||
-    new Set(headers).size !== headers.length
-  )
-    throw new Error('CSV 需包含唯一非空表头和至少一行数据');
-  const hash = Array.from(
-    new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)),
-  )
-    .map((byte) => byte.toString(16).padStart(2, '0'))
-    .join('');
-  const source: Source = {
-    id: crypto.randomUUID(),
-    name: file.name,
-    bytes: file.size,
-    hash,
-    headers,
-    rows: count - 1,
-    preview: records
-      .slice(1)
-      .map((row) =>
-        Object.fromEntries(headers.map((name, i) => [name, row[i]])),
-      ),
-  };
-  return source;
+async function importCSV(file: File): Promise<Source> {
+  const worker = new Worker(new URL('./csv.worker.ts', import.meta.url), {
+    type: 'module',
+  });
+  let timeout: ReturnType<typeof setTimeout>;
+  try {
+    return await new Promise<Source>((resolve, reject) => {
+      timeout = setTimeout(
+        () => reject(new Error('CSV 读取超时，请检查网络后重试')),
+        60000,
+      );
+      worker.onmessage = ({ data }) =>
+        data.error ? reject(new Error(data.error)) : resolve(data.source);
+      worker.onerror = (event) => {
+        event.preventDefault();
+        reject(new Error('CSV 读取失败，请重新导入'));
+      };
+      worker.postMessage(file);
+    });
+  } finally {
+    clearTimeout(timeout!);
+    worker.terminate();
+  }
 }
 
-// shortcut: Static builds replay saved analyses; connect a browser query engine before enabling execution.
-export async function browserApi<T>(
+async function handleBrowserApi<T>(
   path: string,
   options: RequestInit = {},
 ): Promise<T> {
   const method = options.method || 'GET';
   let result: unknown;
-  if (method === 'GET' && path === '/session') result = session();
-  else if (method === 'GET' && path === '/runs') {
-    const saved = await listLocal<Run>('runs');
+  if (method === 'GET' && path === '/session') {
+    await recoverRuns();
+    result = session();
+  } else if (method === 'GET' && path === '/runs') {
+    const saved = (await listLocal<Run>('runs')).map(
+      (run) => activeRun(run.id) ?? run,
+    );
     const ids = new Set(saved.map((run) => run.id));
     result = [
       ...saved,
       ...(await classicCases()).filter((run) => !ids.has(run.id)),
-    ].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    ]
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .map(runSummary);
+  } else if (method === 'POST' && path === '/runs') {
+    result = await startBrowserRun(JSON.parse(String(options.body)), {
+      model,
+      baseURL,
+      apiKey,
+    });
+  } else if (method === 'POST' && /^\/runs\/[^/]+\/control$/.test(path)) {
+    const body = JSON.parse(String(options.body));
+    if (body.command !== 'stop') throw new Error('无效操作');
+    result = await stopBrowserRun(path.split('/')[2], body.requestId);
   } else if (method === 'POST' && path === '/settings') {
+    if (activeRunId()) throw new Error('请先停止当前分析，再修改模型配置');
     const settings = JSON.parse(String(options.body));
     const url = new URL(settings.baseURL);
     if (
@@ -106,17 +115,29 @@ export async function browserApi<T>(
     path === '/sources' &&
     options.body instanceof File
   ) {
-    const source = await readCSV(options.body);
+    const source = await importCSV(options.body);
     await writeLocal('sources', source.id, { source, file: options.body });
     result = source;
   } else if (method === 'GET' && /^\/runs\/[^/]+$/.test(path)) {
     result = await readRun(path.split('/')[2]);
     if (!result) throw new Error('未找到这份分析记录');
+    result = publicRun(result as Run);
+  } else if (method === 'GET' && /^\/runs\/[^/]+\/export$/.test(path)) {
+    const run = await readRun(path.split('/')[2]);
+    if (!run) throw new Error('未找到这份分析记录');
+    result = {
+      format: 'ava-notebook-evidence',
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      run,
+    };
   } else if (method === 'DELETE' && /^\/runs\/[^/]+$/.test(path)) {
     const id = path.split('/')[2];
     const run = await readRun(id);
     if (run?.caseStudy) throw new Error('经典案例不能删除');
+    if (activeRunId() === id) await stopBrowserRun(id);
     await deleteLocal('runs', id);
+    forgetBrowserRun(id);
     result = { ok: true };
   } else if (method === 'POST' && /^\/runs\/[^/]+\/charts$/.test(path)) {
     const run = await readRun(path.split('/')[2]);
@@ -144,8 +165,24 @@ export async function browserApi<T>(
     run.revision++;
     run.updatedAt = new Date().toISOString();
     run.nodeCount = run.nodes.length;
-    await writeLocal('runs', run.id, run);
-    result = run;
-  } else throw new Error('查询引擎尚未接入');
+    await saveBrowserRun(run);
+    result = publicRun(run);
+  } else throw new Error('不支持的浏览器操作');
   return result as T;
+}
+
+export function browserApi<T>(
+  path: string,
+  options: RequestInit = {},
+): Promise<T> {
+  return lock(() => {
+    const id = path.split('/')[2];
+    if (
+      (options.method === 'DELETE' && /^\/runs\/[^/]+$/.test(path)) ||
+      (options.method === 'POST' && /^\/runs\/[^/]+\/charts$/.test(path))
+    ) {
+      return mutateBrowserRun(id, () => handleBrowserApi<T>(path, options));
+    }
+    return handleBrowserApi<T>(path, options);
+  });
 }

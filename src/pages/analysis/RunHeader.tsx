@@ -1,6 +1,6 @@
 import { PanelLeft, BookOpen, ChevronRight, Download } from 'lucide-react';
 import type { Run } from '../../../shared/contracts';
-import { browserMode } from '../../runtime/client';
+import { api } from '../../runtime/client';
 
 export default function RunHeader({
   run,
@@ -40,42 +40,25 @@ export default function RunHeader({
         </strong>
       </div>
       <div className="header-actions">
-        <a
+        <button
           aria-label="导出证据"
           className="text-button"
-          href={`/api/runs/${run.id}/export`}
-          onClick={
-            browserMode
-              ? (event) => {
-                  event.preventDefault();
-                  const blob = new Blob(
-                    [
-                      JSON.stringify(
-                        {
-                          format: 'ava-notebook-evidence',
-                          version: 1,
-                          exportedAt: new Date().toISOString(),
-                          run,
-                        },
-                        null,
-                        2,
-                      ),
-                    ],
-                    { type: 'application/json' },
-                  );
-                  const url = URL.createObjectURL(blob);
-                  const link = document.createElement('a');
-                  link.href = url;
-                  link.download = `ava-evidence-${run.id}.json`;
-                  link.click();
-                  setTimeout(() => URL.revokeObjectURL(url), 1000);
-                }
-              : undefined
-          }
+          onClick={async () => {
+            const blob = new Blob(
+              [JSON.stringify(await api(`/runs/${run.id}/export`), null, 2)],
+              { type: 'application/json' },
+            );
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `ava-evidence-${run.id}.json`;
+            link.click();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+          }}
         >
           <Download size={14} />
           导出
-        </a>
+        </button>
       </div>
     </header>
   );

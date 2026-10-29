@@ -1,4 +1,4 @@
-import { completeRun } from '../../server/analysis/evidence.mjs';
+import { completeRun } from '../../shared/evidence.mjs';
 import { emit } from './direct-events.mjs';
 
 export function loopRun({

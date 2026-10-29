@@ -1,6 +1,6 @@
 import { useEffect, useState, startTransition } from 'react';
 import type { Run, Source } from '../../../shared/contracts';
-import { api, browserMode, readDraft, saveDraft } from '../../runtime/client';
+import { api, readDraft, saveDraft } from '../../runtime/client';
 
 type Draft = {
   source: Source | null;
@@ -14,7 +14,6 @@ export function useComposer(onError: (message: string) => void) {
   const [strategy, setStrategy] = useState<Run['strategy']>('direct');
   const [ready, setReady] = useState(false);
   async function restore() {
-    if (!browserMode) return;
     const draft = await readDraft<Draft>();
     if (draft) {
       setSource(draft.source);
@@ -24,7 +23,7 @@ export function useComposer(onError: (message: string) => void) {
     setReady(true);
   }
   useEffect(() => {
-    if (browserMode && ready)
+    if (ready)
       void saveDraft({ source, question, strategy }).catch((error) =>
         onError(error.message),
       );

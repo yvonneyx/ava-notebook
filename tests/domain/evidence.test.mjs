@@ -1,20 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { inspectCSV } from '../../server/storage/index.mjs';
-import { applyEvent, completeRun, eventNodeId } from '../../server/analysis/evidence.mjs';
+import {
+  applyEvent,
+  completeRun,
+  eventNodeId,
+} from '../../shared/evidence.mjs';
 import { emit, directRun } from '../fixtures/direct-events.mjs';
 import { loopRun } from '../fixtures/loop-events.mjs';
-
-test('CSV validation rejects malformed, duplicate-header and non-CSV inputs', () => {
-  assert.throws(() => inspectCSV(Buffer.from('a,b\n1,2'), 'x.json'));
-  assert.throws(() => inspectCSV(Buffer.from('a,a\n1,2'), 'x.csv'));
-  assert.throws(() => inspectCSV(Buffer.from('a,b\n1,2,3'), 'x.csv'));
-  assert.throws(() => inspectCSV(Buffer.from('a,b\n'), 'x.csv'));
-  assert.deepEqual(
-    inspectCSV(Buffer.from('\ufeffa,b\n"x,y",2\n'), 'x.csv').preview,
-    [{ a: 'x,y', b: '2' }],
-  );
-});
 
 test('direct context IDs retain retries, SQL, exact summary source, limitations and usage', () => {
   const run = directRun();

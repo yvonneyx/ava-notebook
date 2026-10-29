@@ -9,7 +9,7 @@ before(async () => {
     server: { middlewareMode: true, hmr: false, ws: false, watch: null },
     appType: 'custom',
   });
-  ({ readCSV } = await server.ssrLoadModule('/src/runtime/static.ts'));
+  ({ readCSV } = await server.ssrLoadModule('/src/runtime/csv.ts'));
 });
 after(async () => {
   await server?.close();
@@ -25,6 +25,14 @@ test('browser CSV reader preserves quoted cells and enforces import boundaries',
   ]);
   assert.equal(source.hash, createHash('sha256').update(text).digest('hex'));
   for (const invalid of [
+    new File(
+      [
+        Array.from({ length: 201 }, (_, i) => `c${i}`).join(',') +
+          '\n' +
+          Array(201).fill('1').join(','),
+      ],
+      'wide.csv',
+    ),
     new File(['a,b\n'], 'empty.csv'),
     new File(['a,a\n1,2'], 'duplicate.csv'),
     new File(['a, \n1,2'], 'blank-header.csv'),
