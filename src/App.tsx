@@ -16,7 +16,7 @@ import {
   Database,
   ShieldCheck,
   ArrowRight,
-  Upload,
+  Paperclip,
   FileSpreadsheet,
   Settings2,
   ChevronDown,
@@ -444,204 +444,196 @@ export default function App() {
                     </span>
                   </div>
                 </div>
-                <div className="compose-card">
-                  <section className="source-section" aria-label="导入数据">
-                    <div className="section-heading">
-                      <span className="section-number">
-                        <FileSpreadsheet size={14} />
-                      </span>
-                      <h2>添加数据</h2>
-                      <span className="section-aside">CSV · 最大 10 MB</span>
+                <section
+                  className={`compose-card ${dragging ? 'dragging' : ''}`}
+                  aria-label="分析输入区"
+                  onDragOver={(e) => {
+                    if (!e.dataTransfer.types.includes('Files')) return;
+                    e.preventDefault();
+                    if (!busy) setDragging(true);
+                  }}
+                  onDragLeave={(e) => {
+                    if (!e.currentTarget.contains(e.relatedTarget as Node))
+                      setDragging(false);
+                  }}
+                  onDrop={(e) => {
+                    const file = e.dataTransfer.files[0];
+                    if (!file) return;
+                    e.preventDefault();
+                    setDragging(false);
+                    if (!busy) void act(() => upload(file));
+                  }}
+                >
+                  <textarea
+                    className="question-input"
+                    aria-label="分析问题"
+                    value={question}
+                    onChange={(e) => setQuestion(e.target.value)}
+                    placeholder="例如：销售额为什么下降？主要受哪些产品影响？"
+                    maxLength={8000}
+                    onKeyDown={(e) => {
+                      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter')
+                        document.getElementById('start-analysis')?.click();
+                    }}
+                  />
+                  <ViewTransition default="none" update="morph">
+                    <div className="composer-attachments">
+                      {source && (
+                        <>
+                          <div className="source-attachment">
+                            <div className="file-icon">
+                              <FileSpreadsheet size={20} strokeWidth={1.6} />
+                            </div>
+                            <div className="file-info">
+                              <strong title={source.name}>{source.name}</strong>
+                              <p>
+                                {source.rows.toLocaleString()} 行 ·{' '}
+                                {source.headers.length} 个字段 ·{' '}
+                                {(source.bytes / 1024).toFixed(1)} KB
+                              </p>
+                            </div>
+                            <button
+                              className="icon-button"
+                              aria-label={`移除文件 ${source.name}`}
+                              title="移除文件"
+                              disabled={busy}
+                              onClick={() => setSource(null)}
+                            >
+                              <X size={14} />
+                            </button>
+                          </div>
+                          <details className="source-preview" key={source.id}>
+                            <summary>
+                              预览数据
+                              <span>
+                                {source.headers.slice(0, 4).join(' · ')}
+                                {source.headers.length > 4 ? ' …' : ''}
+                              </span>
+                            </summary>
+                            <DataTable rows={source.preview} />
+                          </details>
+                        </>
+                      )}
                     </div>
-                    <ViewTransition default="none" update="morph">
-                      <div
-                        className={`upload-area ${source ? 'has-source' : ''} ${
-                          dragging ? 'dragging' : ''
-                        }`}
-                        onDragOver={(e) => {
-                          e.preventDefault();
-                          if (!busy) setDragging(true);
-                        }}
-                        onDragLeave={(e) => {
-                          if (
-                            !e.currentTarget.contains(e.relatedTarget as Node)
-                          )
-                            setDragging(false);
-                        }}
-                        onDrop={(e) => {
-                          e.preventDefault();
-                          setDragging(false);
-                          const file = e.dataTransfer.files[0];
-                          if (file && !busy) void act(() => upload(file));
-                        }}
-                      >
-                        <div className="file-icon">
-                          <FileSpreadsheet size={25} strokeWidth={1.6} />
-                          {source && (
-                            <span className="file-ready">
-                              <Check size={10} strokeWidth={3} />
-                            </span>
-                          )}
-                        </div>
-                        <div className="file-info">
-                          <strong>
-                            {source
-                              ? source.name
-                              : dragging
-                              ? '松开，放在这里'
-                              : '把数据放在这里'}
-                          </strong>
-                          <p>
-                            {source
-                              ? `${source.rows.toLocaleString()} 行 · ${
-                                  source.headers.length
-                                } 个字段 · ${(source.bytes / 1024).toFixed(
-                                  1,
-                                )} KB`
-                              : '拖入 CSV，或选择本地文件'}
-                          </p>
-                        </div>
-                        <button
-                          className="button secondary"
-                          disabled={busy}
-                          onClick={() => fileInput.current?.click()}
-                        >
-                          {source ? '更换文件' : '选择文件'}
-                          <Upload size={14} />
-                        </button>
-                        <input
-                          ref={fileInput}
-                          type="file"
-                          accept=".csv,text/csv"
-                          hidden
-                          onChange={(e) => {
-                            const file = e.target.files?.[0];
-                            if (file) void act(() => upload(file));
-                            e.target.value = '';
-                          }}
-                        />
-                      </div>
-                    </ViewTransition>
-                    {source ? (
-                      <details className="source-preview" key={source.id}>
-                        <summary>
-                          预览数据
-                          <span>
-                            {source.headers.slice(0, 4).join(' · ')}
-                            {source.headers.length > 4 ? ' …' : ''}
-                          </span>
-                        </summary>
-                        <DataTable rows={source.preview} />
-                      </details>
-                    ) : (
-                      <button
-                        className="sample-button"
-                        disabled={busy}
-                        onClick={() =>
-                          void act(async () => {
-                            const response = await fetch('/sales.csv');
-                            if (!response.ok)
-                              throw new Error('示例文件加载失败');
-                            await upload(
-                              new File([await response.blob()], 'sales.csv', {
-                                type: 'text/csv',
-                              }),
-                            );
-                            setQuestion(
-                              '对比 2025 年 1 月和 2 月的销售额，找出下降最多的产品。',
-                            );
-                          })
-                        }
-                      >
-                        <Database size={14} />
-                        使用销售示例数据
-                        <ArrowRight size={14} />
-                      </button>
-                    )}
-                  </section>
-                  <section className="question-section" aria-label="提出问题">
-                    <div className="section-heading">
-                      <span className="section-number">
-                        <Feather size={14} />
-                      </span>
-                      <h2>想了解什么？</h2>
-                      <kbd>⌘ / Ctrl ↵</kbd>
-                    </div>
-                    <textarea
-                      className="question-input"
-                      aria-label="分析问题"
-                      value={question}
-                      onChange={(e) => setQuestion(e.target.value)}
-                      placeholder="例如：销售额为什么下降？主要受哪些产品影响？"
-                      maxLength={8000}
-                      onKeyDown={(e) => {
-                        if ((e.metaKey || e.ctrlKey) && e.key === 'Enter')
-                          document.getElementById('start-analysis')?.click();
+                  </ViewTransition>
+                  <div className="compose-footer">
+                    <button
+                      className="composer-upload"
+                      disabled={busy}
+                      title="上传 CSV · 最大 10 MB"
+                      onClick={() => fileInput.current?.click()}
+                    >
+                      <Paperclip size={15} />
+                      {source ? '更换 CSV' : '上传 CSV'}
+                    </button>
+                    <input
+                      ref={fileInput}
+                      type="file"
+                      accept=".csv,text/csv"
+                      disabled={busy}
+                      hidden
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file && !busy) void act(() => upload(file));
+                        e.target.value = '';
                       }}
                     />
-                    <div className="compose-footer">
-                      <div className="compose-options">
-                        <button
-                          className="composer-model"
-                          onClick={() => setSettings(true)}
-                        >
-                          <span
-                            className={`connection-dot ${
-                              session?.configured ? 'ok' : ''
-                            }`}
-                          />
-                          {session?.configured ? session.model : '配置模型'}
-                          <ChevronDown size={12} />
-                        </button>
-                        <span className="option-divider" />
-                        <label className="mode-picker">
-                          <select
-                            aria-label="执行方式"
-                            value={mode}
-                            onChange={(e) => setMode(e.target.value as Mode)}
-                          >
-                            {modeOptions}
-                          </select>
-                          <ChevronDown size={12} />
-                        </label>
-                      </div>
+                    <div className="compose-options">
                       <button
-                        id="start-analysis"
-                        className="button primary"
-                        disabled={busy || !source || !question.trim()}
-                        onClick={() => {
-                          if (!session?.configured) {
-                            setSettings(true);
-                            return;
-                          }
-                          void act(async () => {
-                            const next = await post<Run>('/runs', {
-                              sourceId: source!.id,
-                              question,
-                              mode,
-                              requestId: crypto.randomUUID(),
-                            });
-                            startTransition(() => {
-                              addTransitionType('nav-forward');
-                              setRun(next);
-                              setDrafts({});
-                              setView('notebook');
-                              setSelected('');
-                            });
-                            history.replaceState(null, '', `?run=${next.id}`);
-                            await refreshRuns();
-                          });
-                        }}
+                        className="composer-model"
+                        onClick={() => setSettings(true)}
                       >
-                        {busy ? (
-                          <LoaderCircle size={15} className="spin" />
-                        ) : null}
-                        开始分析
-                        {!busy && <ArrowUp size={16} />}
+                        <span
+                          className={`connection-dot ${
+                            session?.configured ? 'ok' : ''
+                          }`}
+                        />
+                        <span>
+                          {session?.configured ? session.model : '配置模型'}
+                        </span>
+                        <ChevronDown size={12} />
                       </button>
+                      <span className="option-divider" />
+                      <label className="mode-picker">
+                        <select
+                          aria-label="执行方式"
+                          value={mode}
+                          onChange={(e) => setMode(e.target.value as Mode)}
+                        >
+                          {modeOptions}
+                        </select>
+                        <ChevronDown size={12} />
+                      </label>
                     </div>
-                  </section>
-                </div>
+                    <button
+                      id="start-analysis"
+                      aria-label="开始分析"
+                      aria-keyshortcuts="Meta+Enter Control+Enter"
+                      title="开始分析（⌘ / Ctrl + Enter）"
+                      className="button primary"
+                      disabled={busy || !source || !question.trim()}
+                      onClick={() => {
+                        if (!session?.configured) {
+                          setSettings(true);
+                          return;
+                        }
+                        void act(async () => {
+                          const next = await post<Run>('/runs', {
+                            sourceId: source!.id,
+                            question,
+                            mode,
+                            requestId: crypto.randomUUID(),
+                          });
+                          startTransition(() => {
+                            addTransitionType('nav-forward');
+                            setRun(next);
+                            setDrafts({});
+                            setView('notebook');
+                            setSelected('');
+                          });
+                          history.replaceState(null, '', `?run=${next.id}`);
+                          await refreshRuns();
+                        });
+                      }}
+                    >
+                      {busy ? (
+                        <LoaderCircle size={15} className="spin" />
+                      ) : null}
+                      <span className="start-label">开始分析</span>
+                      {!busy && <ArrowUp size={16} />}
+                    </button>
+                  </div>
+
+                  {dragging && (
+                    <div className="composer-drop-hint" role="status">
+                      <FileSpreadsheet size={20} /> 松开以添加 CSV
+                    </div>
+                  )}
+                </section>
+                {!source && (
+                  <button
+                    className="sample-button"
+                    disabled={busy}
+                    onClick={() =>
+                      void act(async () => {
+                        const response = await fetch('/sales.csv');
+                        if (!response.ok) throw new Error('示例文件加载失败');
+                        await upload(
+                          new File([await response.blob()], 'sales.csv', {
+                            type: 'text/csv',
+                          }),
+                        );
+                        setQuestion(
+                          '对比 2025 年 1 月和 2 月的销售额，找出下降最多的产品。',
+                        );
+                      })
+                    }
+                  >
+                    <Database size={14} />
+                    使用销售示例数据
+                    <ArrowRight size={14} />
+                  </button>
+                )}
                 <p className="privacy-note">
                   <ShieldCheck size={13} />
                   记录保存在本机，分析上下文发送至所选模型。
