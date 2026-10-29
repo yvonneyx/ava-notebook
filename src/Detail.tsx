@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { kindLabels, statusLabels, isActive } from './types';
 import type { Evidence, Run, Mode } from './types';
+import { browserMode } from './api';
 export default function Detail({
   node,
   draft,
@@ -284,7 +285,10 @@ export default function Detail({
             <button
               className="button secondary full"
               disabled={
-                busy || isActive(run) || (node.kind === 'query' && !sql.trim())
+                browserMode ||
+                busy ||
+                isActive(run) ||
+                (node.kind === 'query' && !sql.trim())
               }
               onClick={() => onFork(node.id, decision)}
             >

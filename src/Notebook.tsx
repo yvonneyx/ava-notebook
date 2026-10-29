@@ -15,6 +15,7 @@ import AnalysisText from './AnalysisText';
 import { DataTable } from './DataViews';
 import { notebookSteps, stepDatasets, stepNarrative } from './notebook-steps';
 import { evidenceDatasets } from './evidence-views';
+import { browserMode } from './api';
 
 type Draft = { sql?: string; instruction?: string };
 type NotebookProps = {
@@ -52,7 +53,7 @@ function QueryCell({
   const modified = sql !== node.payload.sql;
   const dataset = evidenceDatasets(run, node)[0];
   const execute = () => {
-    if (busy || !editable || !sql.trim()) return;
+    if (browserMode || busy || !editable || !sql.trim()) return;
     if (waiting) onContinue({ sql }, 'query');
     else onFork(node.id);
   };
@@ -153,7 +154,7 @@ function QueryCell({
                   className={`button small ${
                     waiting ? 'primary' : 'secondary'
                   }`}
-                  disabled={busy || !sql.trim()}
+                  disabled={browserMode || busy || !sql.trim()}
                   onClick={execute}
                 >
                   {waiting ? <Play size={12} /> : <GitBranch size={12} />}
@@ -450,7 +451,7 @@ export default function Notebook(props: NotebookProps) {
                   </label>
                   <button
                     className="button secondary small"
-                    disabled={busy}
+                    disabled={browserMode || busy}
                     onClick={() =>
                       pending
                         ? onContinue(

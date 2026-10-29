@@ -1,7 +1,13 @@
+export const browserMode = import.meta.env.MODE === 'static';
+
 export async function api<T = any>(
   path: string,
   options: RequestInit = {},
 ): Promise<T> {
+  if (browserMode) {
+    const { browserApi } = await import('./browser-api');
+    return browserApi<T>(path, options);
+  }
   const response = await fetch(`/api${path}`, {
     ...options,
     headers: {

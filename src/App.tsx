@@ -33,7 +33,8 @@ import {
   ChevronRight,
   NotebookPen,
 } from 'lucide-react';
-import { api, post } from './api';
+import { api, post, browserMode } from './api';
+import { readLocal, writeLocal } from './browser-store';
 import type { Run, Source, Mode, Session, Evidence } from './types';
 import { statusLabels, isActive } from './types';
 import Notebook from './Notebook';
@@ -70,6 +71,7 @@ export default function App() {
     Record<string, { sql?: string; instruction?: string }>
   >({});
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
+  const [composerReady, setComposerReady] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const dialog = useRef<HTMLDialogElement>(null);
   const sidebar = useRef<HTMLElement>(null);
@@ -89,11 +91,19 @@ export default function App() {
     setRuns(await api<Run[]>('/runs'));
   }
   async function openRun(id: string) {
-    const next = await api<Run>(`/runs/${id}`);
+    const [next, savedDrafts] = await Promise.all([
+      api<Run>(`/runs/${id}`),
+      browserMode
+        ? readLocal<Record<string, { sql?: string; instruction?: string }>>(
+            'drafts',
+            id,
+          )
+        : undefined,
+    ]);
     startTransition(() => {
       addTransitionType(run ? 'switch-run' : 'nav-forward');
       setRun(next);
-      setDrafts({});
+      setDrafts(savedDrafts || {});
       setView('notebook');
       setSidebarOpen(false);
       setSelected('');
@@ -119,17 +129,34 @@ export default function App() {
       setModel(info.model);
       setBaseURL(info.baseURL);
       await refreshRuns();
+      if (browserMode) {
+        const composer = await readLocal<{
+          source: Source | null;
+          question: string;
+        }>('drafts', 'composer');
+        if (composer) {
+          setSource(composer.source);
+          setQuestion(composer.question);
+        }
+        setComposerReady(true);
+      }
       const id =
         new URLSearchParams(location.search).get('run') || info.activeRunId;
       if (id) await openRun(id);
     });
   }, []);
   useEffect(() => {
+    if (browserMode && composerReady)
+      void writeLocal('drafts', 'composer', { source, question }).catch(
+        (error) => setError(error.message),
+      );
+  }, [source, question, composerReady]);
+  useEffect(() => {
     if (settings) dialog.current?.showModal();
     else dialog.current?.close();
   }, [settings]);
   useEffect(() => {
-    if (!run?.id) return;
+    if (browserMode || !run?.id) return;
     const id = run.id;
     const events = new EventSource(`/api/runs/${id}/events`);
     events.onopen = () => setConnected(true);
@@ -189,10 +216,12 @@ export default function App() {
     });
   }
   function editNode(id: string, value: { sql?: string; instruction?: string }) {
-    setDrafts((current) => ({
-      ...current,
-      [id]: { ...current[id], ...value },
-    }));
+    const next = { ...drafts, [id]: { ...drafts[id], ...value } };
+    setDrafts(next);
+    if (browserMode && run)
+      void writeLocal('drafts', run.id, next).catch((error) =>
+        setError(error.message),
+      );
   }
   function decisionFor(
     id: string,
@@ -343,7 +372,9 @@ export default function App() {
               <strong>{item.question}</strong>
             </button>
           ))}
-          {!historyRuns.length && <div className="history-empty">暂无分析记录</div>}
+          {!historyRuns.length && (
+            <div className="history-empty">暂无分析记录</div>
+          )}
         </nav>
         <div className="sidebar-bottom">
           <button
@@ -427,6 +458,35 @@ export default function App() {
                   aria-label="导出证据"
                   className="text-button"
                   href={`/api/runs/${run.id}/export`}
+                  onClick={
+                    browserMode
+                      ? (event) => {
+                          event.preventDefault();
+                          const blob = new Blob(
+                            [
+                              JSON.stringify(
+                                {
+                                  format: 'ava-notebook-evidence',
+                                  version: 1,
+                                  exportedAt: new Date().toISOString(),
+                                  run,
+                                  drafts,
+                                },
+                                null,
+                                2,
+                              ),
+                            ],
+                            { type: 'application/json' },
+                          );
+                          const url = URL.createObjectURL(blob);
+                          const link = document.createElement('a');
+                          link.href = url;
+                          link.download = `ava-evidence-${run.id}.json`;
+                          link.click();
+                          setTimeout(() => URL.revokeObjectURL(url), 1000);
+                        }
+                      : undefined
+                  }
                 >
                   <Download size={14} />
                   导出
@@ -599,7 +659,9 @@ export default function App() {
                       aria-keyshortcuts="Meta+Enter Control+Enter"
                       title="开始分析（⌘ / Ctrl + Enter）"
                       className="button primary"
-                      disabled={busy || !source || !question.trim()}
+                      disabled={
+                        browserMode || busy || !source || !question.trim()
+                      }
                       onClick={() => {
                         if (!session?.configured) {
                           setSettings(true);
@@ -644,6 +706,10 @@ export default function App() {
                     disabled={busy}
                     onClick={() =>
                       void act(async () => {
+                        if (browserMode) {
+                          await openRun('case-sales-performance');
+                          return;
+                        }
                         const example = await post<{
                           source: Source;
                           question: string;
@@ -986,7 +1052,11 @@ export default function App() {
               }
             />
           </label>
-          <div className="notice">本次配置仅在当前服务运行期间生效。</div>
+          <div className="notice">
+            {browserMode
+              ? '本次配置仅在当前页面打开期间生效。'
+              : '本次配置仅在当前服务运行期间生效。'}
+          </div>
           <button className="button primary full" disabled={busy} type="submit">
             {busy ? (
               <LoaderCircle size={15} className="spin" />

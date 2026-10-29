@@ -35,6 +35,9 @@
   "scripts": {
     "dev": "node --env-file-if-exists=.env server/index.mjs --dev",
     "build": "tsc --noEmit && vite build",
+    "dev:static": "vite --mode static",
+    "build:static": "tsc --noEmit && vite build --mode static --outDir dist-static",
+    "preview:static": "vite preview --outDir dist-static",
     "start": "node --env-file-if-exists=.env server/index.mjs",
     "test": "node --test tests/*.test.mjs"
   }

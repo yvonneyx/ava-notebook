@@ -4,6 +4,8 @@ node_modules/
 !.env.example
 .DS_Store
 dist/
+dist-static/
+.vercel/
 .ava-notebook/
 .history/
 .lh/

@@ -6,6 +6,29 @@
 
 ## 启动
 
+### 静态浏览器版本
+
+```sh
+npm run build:static
+npm run preview:static -- --host 127.0.0.1 --port 4318
+```
+
+静态产物位于 `dist-static/`，可单独部署到 Vercel 等静态托管服务；不需要运行 Node 后端，也不需要把本地 AVA 仓库上传到托管平台。开发时使用 `npm run dev:static`。当前依赖安装与构建仍在具备下述同级 AVA 仓库的本地环境完成。
+
+线上地址：https://ava-notebook.vercel.app 。更新发布时，构建后重新关联产物目录并上传：
+
+```sh
+npm run build:static
+vercel link --cwd dist-static --yes --project ava-notebook --scope yuxins-projects-e2c1f66b
+vercel deploy --cwd dist-static --prod --yes --scope yuxins-projects-e2c1f66b
+```
+
+界面沿用原版，内置两份基于仓库示例 CSV 的已完成案例。案例、上传的 CSV、问题草稿、SQL 修改和保存的图表存入 IndexedDB；模型设置与密钥仅保留在页面内存。支持回顾、Data / Chart、图谱和本地 JSON 导出，查询与分支重跑尚未接入。静态页面不请求 `/api` 或调用模型。
+
+网站数据按浏览器和站点地址隔离；清除网站数据会删除本地内容。线上发布只使用 `dist-static/`，其中不包含 `.env`、本机历史目录和模型输入原文。
+
+### 本地完整版本
+
 需要 Node.js 22.13+，以及包含本项目控制与 telemetry 扩展的本地 AVA 构建。两个仓库放在同级目录：
 
 ```text
