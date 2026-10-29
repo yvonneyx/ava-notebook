@@ -32,7 +32,7 @@ import {
   BookOpen,
   Search,
   ChevronRight,
-  NotebookPen,
+  ChartNoAxesCombined,
 } from 'lucide-react';
 import { api, post } from './api';
 import type { Run, Source, Mode, Session, Evidence } from './types';
@@ -297,10 +297,10 @@ export default function App() {
           }}
         >
           <span className="brand-symbol">
-            <NotebookPen size={20} strokeWidth={1.8} />
+            <ChartNoAxesCombined size={20} strokeWidth={1.8} />
           </span>
           <strong>
-            ava<span>notebook</span>
+            ava<span>数据分析</span>
           </strong>
         </a>
         <button
@@ -419,7 +419,10 @@ export default function App() {
             <div className="home">
               <div className="home-content">
                 <div className="home-heading">
-                  <h1><span>用一句话，</span><span>读懂你的数据。</span></h1>
+                  <h1>
+                    <span>用一句话，</span>
+                    <span>读懂你的数据。</span>
+                  </h1>
                 </div>
                 <section
                   className={`compose-card ${dragging ? 'dragging' : ''}`}
