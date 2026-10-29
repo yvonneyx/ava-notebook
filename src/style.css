@@ -494,15 +494,6 @@ kbd {
   color: #45545f;
   gap: 8px;
 }
-.source-preview summary > span {
-  margin-left: auto;
-  max-width: 65%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 10px;
-  color: #5e6e79;
-}
 .source-preview .table-scroll {
   margin-top: 8px;
   max-height: 230px;

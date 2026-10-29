@@ -178,7 +178,6 @@ export class Jobs {
       gate: null,
       pauseRequested: false,
       initialDecision: sql || instruction ? { sql, instruction } : null,
-      timer: null,
     };
     this.active = job;
     child.stderr.on('data', () => {});
@@ -198,7 +197,6 @@ export class Jobs {
     });
     child.on('exit', () => {
       void this.lock(async () => {
-        clearTimeout(job.timer);
         if (!terminal.has(run.status)) {
           run.status = 'interrupted';
           run.error = '执行进程已退出，请从检查点重试';
@@ -208,7 +206,6 @@ export class Jobs {
         await rm(scratch, { recursive: true, force: true });
       }).catch(() => {});
     });
-    this.deadline(job);
     child.send({
       type: 'start',
       sourcePath: path,
@@ -219,18 +216,8 @@ export class Jobs {
     });
     return run;
   }
-  deadline(job) {
-    clearTimeout(job.timer);
-    job.timer = setTimeout(() => {
-      void this.lock(() =>
-        this.fail(job, '当前步骤超过 120 秒，已停止；可以从检查点重试'),
-      ).catch(() => {});
-    }, 120000);
-    job.timer.unref();
-  }
   async fail(job, error) {
     error = safeError(error);
-    clearTimeout(job.timer);
     if (!terminal.has(job.run.status)) {
       job.run.status = 'failed';
       job.run.error = error;
@@ -272,7 +259,6 @@ export class Jobs {
         (run.mode === 'query' && message.state.phase === 'query');
       job.gate = { requestId: message.id, state: message.state };
       if (pause) {
-        clearTimeout(job.timer);
         run.status = 'paused';
         node.status = 'paused';
         await this.persist(run, [node]);
@@ -303,7 +289,6 @@ export class Jobs {
         await this.persist(run, [node]);
       }
     } else if (message.type === 'done') {
-      clearTimeout(job.timer);
       run.status = 'completed';
       run.result = message.result;
       const node = putNode(run, 'conclusion', {
@@ -345,7 +330,6 @@ export class Jobs {
     job.run.status = 'running';
     node.status = 'running';
     await this.persist(job.run, [node]);
-    this.deadline(job);
     job.child.send({ type: 'reply', id: job.gate.requestId, value: actual });
     job.gate = null;
   }
@@ -380,7 +364,6 @@ export class Jobs {
     if (mode) job.run.mode = mode;
     if (command === 'stop') {
       job.run.status = 'cancelled';
-      clearTimeout(job.timer);
       const node = job.run.nodes.find((n) => n.id === job.run.activeNodeId);
       if (node && ['running', 'ready', 'paused'].includes(node.status))
         node.status = 'cancelled';
@@ -405,7 +388,6 @@ export class Jobs {
   async shutdown() {
     if (this.active) {
       const job = this.active;
-      clearTimeout(job.timer);
       if (!terminal.has(job.run.status)) {
         job.run.status = 'interrupted';
         await this.persist(job.run);

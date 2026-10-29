@@ -491,13 +491,7 @@ export default function App() {
                             </button>
                           </div>
                           <details className="source-preview" key={source.id}>
-                            <summary>
-                              预览数据
-                              <span>
-                                {source.headers.slice(0, 4).join(' · ')}
-                                {source.headers.length > 4 ? ' …' : ''}
-                              </span>
-                            </summary>
+                            <summary>预览数据</summary>
                             <DataTable rows={source.preview} />
                           </details>
                         </>
