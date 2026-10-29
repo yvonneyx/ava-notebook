@@ -11,7 +11,10 @@ let server,
   EvidenceViews,
   Notebook,
   Detail,
-  Bars;
+  Bars,
+  notebookSteps,
+  stepDatasets,
+  stepNarrative;
 before(async () => {
   server = await createServer({
     server: { middlewareMode: true, hmr: false, watch: null },
@@ -25,6 +28,9 @@ before(async () => {
   ({ default: Notebook } = await server.ssrLoadModule('/src/Notebook.tsx'));
   ({ default: Detail } = await server.ssrLoadModule('/src/Detail.tsx'));
   ({ Bars } = await server.ssrLoadModule('/src/DataViews.tsx'));
+  ({ notebookSteps, stepDatasets, stepNarrative } = await server.ssrLoadModule(
+    '/src/notebook-steps.ts',
+  ));
 });
 after(async () => {
   await server?.close();
@@ -328,4 +334,100 @@ test('bar charts use a shared zero baseline instead of drawing negative values a
   assert.match(html, /class="negative" style="left:0%;width:50%"/);
   assert.match(html, /style="left:50%;width:50%"/);
   assert.match(html, /style="left:50%;width:0%"/);
+});
+
+test('one loop round contains its own queries and results, with review-linked findings and stable node anchors', () => {
+  const model = {
+    ...model0,
+    payload: {
+      action: 'EXPLORE',
+      text: '[EXPLORE]\n-- Purpose: 核对金额口径\n```sql\nSELECT 2\n```',
+    },
+  };
+  const review = {
+    ...model1,
+    payload: {
+      action: 'REFINE',
+      text: '[REFINE]\nFindings:\n- 两条结果需要分别核对。\nPlan:\n- 检查贡献变化。\nNext: [SQL]',
+    },
+  };
+  const fixture = { ...run, nodes: [model, q0, r0, q1, r1, review] };
+  const steps = notebookSteps(fixture);
+  assert.equal(steps.length, 2);
+  assert.deepEqual(
+    steps[0].nodes.map((n) => n.id),
+    ['m0', 'q0', 'r0', 'q1', 'r1'],
+  );
+  assert.deepEqual(
+    stepDatasets(fixture, steps[0]).map((d) => d.query.id),
+    ['q0', 'q1'],
+  );
+  assert.ok(
+    stepDatasets(fixture, steps[1]).every((d) =>
+      d.label.startsWith('输入依据'),
+    ),
+  );
+  const narrative = stepNarrative(fixture, steps[0]);
+  assert.equal(narrative.introduction, '核对金额口径');
+  assert.match(narrative.conclusion, /两条结果/);
+  assert.equal(narrative.review.id, 'm1');
+  assert.doesNotMatch(narrative.conclusion, /检查贡献变化/);
+  const html = render(Notebook, {
+    run: fixture,
+    busy: false,
+    drafts: {},
+    onEdit: noop,
+    onContinue: noop,
+    onFork: noop,
+    onSelect: noop,
+  });
+  assert.equal((html.match(/<article/g) || []).length, 2);
+  assert.equal((html.match(/role="tab"/g) || []).length, 6);
+  for (const id of ['m0', 'q0', 'r0', 'q1', 'r1', 'm1'])
+    assert.equal(
+      (html.match(new RegExp(`id="step-${id}"`, 'g')) || []).length,
+      1,
+    );
+  assert.match(html, /本步结论/);
+  assert.match(html, /后续核验/);
+  const final = {
+    ...conclusion,
+    payload: {
+      text: 'Verification:\n已核验。\nConclusion:\n贡献下降。',
+      completionReason: 'confirmed',
+    },
+  };
+  assert.equal(
+    notebookSteps({ ...fixture, nodes: [...fixture.nodes, final] }).length,
+    2,
+  );
+  const unfinished = stepNarrative(
+    { ...fixture, nodes: [model, q0] },
+    notebookSteps({ ...fixture, nodes: [model, q0] })[0],
+  );
+  assert.match(unfinished.conclusion, /等待查询执行/);
+});
+
+test('a grouped round edits the currently paused query without mixing in prior results', () => {
+  const fixture = {
+    ...run,
+    status: 'paused',
+    activeNodeId: 'q1',
+    nodes: [model0, q0, r0, { ...q1, status: 'paused' }],
+  };
+  const html = render(Notebook, {
+    run: fixture,
+    busy: false,
+    drafts: { q1: { sql: 'SELECT 99 AS value' } },
+    onEdit: noop,
+    onContinue: noop,
+    onFork: noop,
+    onSelect: noop,
+  });
+  assert.equal((html.match(/<article/g) || []).length, 1);
+  assert.equal((html.match(/<textarea/g) || []).length, 1);
+  assert.match(html, /SELECT 99 AS value/);
+  assert.match(html, /应用并运行/);
+  const step = notebookSteps(fixture)[0];
+  assert.equal(stepDatasets(fixture, step)[1].rows, undefined);
 });

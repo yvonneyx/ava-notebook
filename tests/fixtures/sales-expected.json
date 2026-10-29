@@ -1,0 +1,14 @@
+{
+  "2025-01": {
+    "days": 31,
+    "rows": 744,
+    "net_revenue": 10970668.16,
+    "contribution_after_ads": 4343222.73
+  },
+  "2025-02": {
+    "days": 28,
+    "rows": 672,
+    "net_revenue": 9851788.61,
+    "contribution_after_ads": 3635969.32
+  }
+}

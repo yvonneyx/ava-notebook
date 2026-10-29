@@ -41,6 +41,13 @@ export function applyEvent(run, event) {
         payload: { schema: data.schema },
       }),
     ];
+  if (event.type === 'semanticend' && data.semantic) {
+    const context = run.nodes.find((n) => n.id === 'context');
+    if (context) {
+      context.payload.semantic = data.semantic;
+      return [context];
+    }
+  }
   if (event.type === 'profileend' && data.profile) {
     const context = run.nodes.find((n) => n.id === 'context');
     if (context) {

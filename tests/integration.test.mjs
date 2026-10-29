@@ -267,6 +267,42 @@ test(
       resumed = await waitRun(resumed.id, (r) => r.status === 'completed');
       assert.equal(resumed.result.completionReason, 'confirmed');
       await until(async () => !(await request('/api/session')).activeRunId);
+      const example = await request('/api/examples/sales', {});
+      assert.equal(example.source.rows, 1416);
+      let semanticRun = await request('/api/runs', {
+        sourceId: example.source.id,
+        question: example.question,
+        mode: 'query',
+      });
+      semanticRun = await waitRun(semanticRun.id, (r) => r.status === 'paused');
+      assert.deepEqual(
+        semanticRun.nodes.find((n) => n.id === 'context').payload.semantic,
+        example.source.semantic.definition,
+      );
+      assert.ok(prompts.at(-1).includes('广告后经营贡献'));
+      assert.ok(prompts.at(-1).includes('analysisGuidance'));
+      await request(`/api/runs/${semanticRun.id}/control`, { command: 'stop' });
+      await until(async () => !(await request('/api/session')).activeRunId);
+      let semanticBranch = await request(`/api/runs/${semanticRun.id}/fork`, {
+        nodeId: 'm-0',
+        mode: 'query',
+      });
+      semanticBranch = await waitRun(
+        semanticBranch.id,
+        (r) => r.status === 'paused',
+      );
+      assert.equal(
+        semanticBranch.source.semantic.hash,
+        semanticRun.source.semantic.hash,
+      );
+      assert.deepEqual(
+        semanticBranch.nodes.find((n) => n.id === 'context').payload.semantic,
+        example.source.semantic.definition,
+      );
+      await request(`/api/runs/${semanticBranch.id}/control`, {
+        command: 'stop',
+      });
+      await until(async () => !(await request('/api/session')).activeRunId);
       const rejected = await request('/api/runs', {
         sourceId: source.id,
         question: 'credential-error-check',

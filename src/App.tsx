@@ -490,6 +490,14 @@ export default function App() {
                                 {source.rows.toLocaleString()} 行 ·{' '}
                                 {source.headers.length} 个字段 ·{' '}
                                 {(source.bytes / 1024).toFixed(1)} KB
+                                {source.semantic && (
+                                  <span
+                                    className="semantic-badge"
+                                    title={source.semantic.name}
+                                  >
+                                    已加载业务语义
+                                  </span>
+                                )}
                               </p>
                             </div>
                             <button
@@ -616,21 +624,19 @@ export default function App() {
                     disabled={busy}
                     onClick={() =>
                       void act(async () => {
-                        const response = await fetch('/sales.csv');
-                        if (!response.ok) throw new Error('示例文件加载失败');
-                        await upload(
-                          new File([await response.blob()], 'sales.csv', {
-                            type: 'text/csv',
-                          }),
-                        );
-                        setQuestion(
-                          '对比 2025 年 1 月和 2 月的销售额，找出下降最多的产品。',
-                        );
+                        const example = await post<{
+                          source: Source;
+                          question: string;
+                        }>('/examples/sales', {});
+                        startTransition(() => {
+                          setSource(example.source);
+                          setQuestion(example.question);
+                        });
                       })
                     }
                   >
                     <Database size={14} />
-                    使用销售示例数据
+                    探索销售经营案例
                     <ArrowRight size={14} />
                   </button>
                 )}

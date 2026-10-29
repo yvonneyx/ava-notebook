@@ -89,13 +89,21 @@ export function inspectCSV(bytes, name) {
       ),
   };
 }
-export async function createSource(bytes, name) {
+export async function createSource(bytes, name, semantic) {
   const info = inspectCSV(bytes, name);
   const source = {
     id: randomUUID(),
     name,
     bytes: bytes.length,
     hash: digest(bytes),
+    ...(semantic
+      ? {
+          semantic: {
+            ...semantic,
+            hash: digest(JSON.stringify(semantic.definition)),
+          },
+        }
+      : {}),
     ...info,
   };
   const dir = join(root, 'sources', source.id);
@@ -110,5 +118,10 @@ export async function readSource(id) {
   const source = JSON.parse(await readFile(join(dir, 'source.json'), 'utf8'));
   if (digest(await readFile(join(dir, 'data.csv'))) !== source.hash)
     throw new Error('数据快照已变化，请重新导入');
+  if (
+    source.semantic &&
+    digest(JSON.stringify(source.semantic.definition)) !== source.semantic.hash
+  )
+    throw new Error('语义快照已变化，请重新导入');
   return { source, path: join(dir, 'data.csv') };
 }

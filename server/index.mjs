@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { Jobs, buildIdentity, modelInfo } from './jobs.mjs';
 import { createSource, listRuns } from './store.mjs';
 import { putNode, runSummary } from './evidence.mjs';
+import { loadSalesExample } from './sales-example.mjs';
 
 const dev = process.argv.includes('--dev');
 const port = Number(process.env.PORT || 4317);
@@ -96,6 +97,7 @@ app.post('/api/sources', async (request) => {
   ).slice(0, 180);
   return createSource(request.body, name);
 });
+app.post('/api/examples/sales', async () => loadSalesExample());
 const mode = z.enum(['auto', 'query', 'step']);
 app.get('/api/runs', async () =>
   (await listRuns()).map((run) => runSummary(jobs.unsaved.get(run.id) || run)),

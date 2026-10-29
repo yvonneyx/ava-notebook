@@ -2757,3 +2757,49 @@ details[open] > :not(summary) {
     transition: none !important;
   }
 }
+
+.semantic-badge {
+  display: inline-block;
+  margin-left: 8px;
+  color: #518b77;
+}
+.notebook-step {
+  position: relative;
+}
+.step-anchor {
+  position: absolute;
+  top: 0;
+  scroll-margin-top: 24px;
+}
+.loop-step-intro {
+  margin: 0 0 10px;
+}
+.loop-step-intro .prose {
+  font-size: 12px;
+}
+.loop-step-conclusion {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid #deede7;
+  border-radius: 18px;
+  background: linear-gradient(120deg, #f6fbf9, #f1f9f5);
+}
+.loop-conclusion-heading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 6px;
+  color: #4a7262;
+  font-size: 11px;
+}
+.loop-conclusion-heading strong {
+  font-weight: 500;
+}
+.loop-conclusion-heading span {
+  font-size: 10px;
+  color: #6a877a;
+}
+.loop-step-conclusion .prose {
+  font-size: 12px;
+}

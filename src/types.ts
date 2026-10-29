@@ -7,6 +7,11 @@ export type Source = {
   bytes: number;
   headers: string[];
   preview: Record<string, unknown>[];
+  semantic?: {
+    name: string;
+    hash: string;
+    definition: Record<string, unknown>;
+  };
 };
 export type Evidence = {
   id: string;

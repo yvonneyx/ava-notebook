@@ -29,7 +29,7 @@ process.on('message', (message) => {
   } else if (message.type === 'start') void execute(message);
 });
 process.on('disconnect', () => process.exit(0));
-async function execute({ sourcePath, question, resume, scratch }) {
+async function execute({ sourcePath, semantic, question, resume, scratch }) {
   const ava = new AVA({
     telemetry: true,
     llm: {
@@ -55,6 +55,7 @@ async function execute({ sourcePath, question, resume, scratch }) {
   try {
     await ava.source({ type: 'csv-file', options: { path: sourcePath } });
     await ava.schema();
+    if (semantic) await ava.semantic(undefined, () => semantic);
     await ava.profile({ metrics: ['row_count', 'null_count'] });
     const result = await ava.analyze(question, {
       maxRows: 200,

@@ -209,7 +209,14 @@ export class Jobs {
       }).catch(() => {});
     });
     this.deadline(job);
-    child.send({ type: 'start', sourcePath: path, question, resume, scratch });
+    child.send({
+      type: 'start',
+      sourcePath: path,
+      semantic: source.semantic?.definition,
+      question,
+      resume,
+      scratch,
+    });
     return run;
   }
   deadline(job) {

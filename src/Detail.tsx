@@ -124,6 +124,12 @@ export default function Detail({
                 />
               </div>
             ))}
+            {node.payload.semantic && (
+              <details>
+                <summary>业务口径与分析思路</summary>
+                <pre>{JSON.stringify(node.payload.semantic, null, 2)}</pre>
+              </details>
+            )}
             <details>
               <summary>查看数据质量统计</summary>
               <pre>{JSON.stringify(node.payload.profile, null, 2)}</pre>

@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Braces, Table2, ChartColumn, ArrowUpRight } from 'lucide-react';
 import type { Evidence, Run } from './types';
@@ -114,14 +114,16 @@ export default function EvidenceViews({
   run,
   sqlPane,
   sqlModified,
+  datasets: scopedDatasets,
   onSelect,
   busy,
   onChart,
 }: {
   node: Evidence;
   run: Run;
-  sqlPane?: ReactNode;
-  sqlModified?: boolean;
+  sqlPane?: ReactNode | ((query?: Evidence) => ReactNode);
+  sqlModified?: boolean | ((query?: Evidence) => boolean);
+  datasets?: EvidenceDataset[];
   onSelect: (id: string) => void;
   busy?: boolean;
   onChart?: (nodeId: string, x: string, y: string) => void;
@@ -136,9 +138,26 @@ export default function EvidenceViews({
   );
   const [datasetId, setDatasetId] = useState('');
   const [axes, setAxes] = useState<Record<string, Axes>>({});
-  const datasets = evidenceDatasets(run, node);
-  const dataset = datasets.find((item) => item.id === datasetId) || datasets[0];
+  const datasets = scopedDatasets ?? evidenceDatasets(run, node);
+  const pendingDataset =
+    run.status === 'paused'
+      ? datasets.find((item) => item.query?.id === run.activeNodeId)
+      : undefined;
+  const pendingId = pendingDataset?.id;
+  useEffect(() => {
+    if (pendingId) {
+      setDatasetId(pendingId);
+      setView('sql');
+    }
+  }, [pendingId]);
+  const dataset =
+    datasets.find((item) => item.id === datasetId) ||
+    pendingDataset ||
+    datasets[0];
   const query = dataset?.query;
+  const modified =
+    typeof sqlModified === 'function' ? sqlModified(query) : sqlModified;
+  const pane = typeof sqlPane === 'function' ? sqlPane(query) : sqlPane;
   const pending = query
     ? query.status === 'failed'
       ? '查询失败，尚无结果数据'
@@ -210,7 +229,7 @@ export default function EvidenceViews({
       >
         {view === 'sql' ? (
           <>
-            {sqlPane ||
+            {pane ||
               (query ? (
                 <>
                   <div className="code-caption">
@@ -232,7 +251,7 @@ export default function EvidenceViews({
               ) : (
                 <p className="view-empty">该环节没有执行 SQL</p>
               ))}
-            {sqlModified && query && (
+            {modified && query && (
               <details className="recorded-sql">
                 <summary>已记录的 SQL</summary>
                 <pre className="inline-code">
@@ -243,7 +262,7 @@ export default function EvidenceViews({
           </>
         ) : (
           <>
-            {sqlModified && dataset?.rows && (
+            {modified && dataset?.rows && (
               <div className="notice">
                 展示上次执行结果；SQL 修改后需重新执行。
               </div>
