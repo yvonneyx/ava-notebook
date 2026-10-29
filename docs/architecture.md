@@ -36,15 +36,14 @@ examples/
 └── classic/
     ├── recordings.json       # 预录响应和数据入口
     ├── datasets/             # 案例输入 CSV
-    ├── generated/cases.json  # 由当前 AVA 生成的内置分析记录
-    └── snapshots/            # 保留的历史素材，不参与运行时加载
+    └── generated/cases.json  # 由当前 AVA 生成的内置分析记录
 tests/
 ├── frontend/                # 视图、布局、CSV 解析和运行环境边界
 ├── server/                  # 事件、任务、存储、案例
 ├── integration/             # HTTP、SSE、真实 AVA / DuckDB 和重启恢复
 └── fixtures/                # 测试事件和数据基准
 scripts/                     # 案例生成脚本
-docs/                        # 架构、开发和素材说明
+docs/                        # 架构和开发说明
 ```
 
 功能样式放在对应页面或功能目录中，由 `src/styles/index.css` 统一引入，保留原有全局类名。图谱组件、静态 CSV 解析器和内置案例数据仍按需加载。

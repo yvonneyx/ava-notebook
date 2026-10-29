@@ -130,8 +130,6 @@
   .history-open {
     padding-right: 38px;
   }
-}
-@media (hover: none) {
   .history-delete {
     opacity: 1;
     pointer-events: auto;
@@ -221,14 +219,10 @@
   .sidebar {
     width: 210px;
   }
-}
-@media (max-width: 1150px) {
   .brand {
     gap: 8px;
     padding-left: 6px;
   }
-}
-@media (max-width: 1150px) {
   .brand strong {
     font-size: 15px;
   }
@@ -239,14 +233,10 @@
     padding: 0 8px;
     z-index: 31;
   }
-}
-@media (max-width: 800px) {
   .brand {
     padding: 0;
     justify-content: center;
   }
-}
-@media (max-width: 800px) {
   .brand strong,
   .new-analysis > span,
   .sidebar-label,
@@ -256,67 +246,46 @@
   .search {
     display: none;
   }
-}
-@media (max-width: 800px) {
   .new-analysis {
     justify-content: center;
     padding: 8px;
     margin: 1px 0;
   }
-}
-@media (max-width: 800px) {
   .sidebar-bottom {
     margin-top: auto;
   }
-}
-@media (max-width: 800px) {
   .model-button {
     justify-content: center;
     padding: 8px;
   }
-}
-@media (max-width: 800px) {
   .sidebar-open > .sidebar {
     position: fixed;
     inset: 0 auto 0 0;
     width: 245px;
     padding: 0 12px;
     box-shadow: 12px 0 40px #21374a14;
-    background: #edf5fa;
   }
-}
-@media (max-width: 800px) {
   .sidebar-open .brand {
     justify-content: flex-start;
     padding: 0 10px;
   }
-}
-@media (max-width: 800px) {
   .sidebar-open .brand strong,
   .sidebar-open .new-analysis > span,
   .sidebar-open .history-list,
   .sidebar-open .model-button > div {
     display: block;
   }
-}
-@media (max-width: 800px) {
   .sidebar-open .sidebar-label,
   .sidebar-open .search {
     display: flex;
   }
-}
-@media (max-width: 800px) {
   .sidebar-open .model-button > .connection-dot {
     display: inline-block;
   }
-}
-@media (max-width: 800px) {
   .sidebar-open .new-analysis {
     justify-content: flex-start;
     padding: 8px 12px;
   }
-}
-@media (max-width: 800px) {
   .sidebar-scrim {
     display: block;
     position: fixed;
@@ -330,8 +299,6 @@
   .sidebar {
     display: none;
   }
-}
-@media (max-width: 560px) {
   .sidebar-open > .sidebar {
     display: flex;
   }
@@ -346,13 +313,9 @@
   .new-analysis-arrow {
     display: none;
   }
-}
-@media (max-width: 800px) {
   .sidebar-open > .sidebar {
     background: #edf5fa;
   }
-}
-@media (max-width: 800px) {
   .sidebar-open .new-analysis-arrow {
     display: block;
   }

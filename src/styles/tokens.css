@@ -6,12 +6,9 @@
   font-size: 13px;
   background: #f3f6f8;
   --primary: #2c3339;
-  --blue-light: #edf7fd;
   --border: #e5edf2;
   --muted: #74818b;
   --surface: #f7fafc;
-  --accent: #328bc1;
-  --radius: 14px;
   --panel-radius: 28px;
   --panel-inner-radius: max(0px, calc(var(--panel-radius) - 1px));
   --duration-exit: 110ms;

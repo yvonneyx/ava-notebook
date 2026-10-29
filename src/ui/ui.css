@@ -3,7 +3,6 @@
   height: 6px;
   display: inline-block;
   border-radius: 50%;
-  background: #45545f;
   flex-shrink: 0;
 }
 .connection-dot {
@@ -40,16 +39,6 @@
   background: #414b53;
   border-color: #414b53;
   box-shadow: 0 3px 8px #23394a12;
-}
-.button.secondary {
-  background: #ffffff;
-  color: #45545f;
-  border-color: #e3eef5;
-  box-shadow: 0 2px 3px #2d373f04;
-}
-.button.secondary:hover:not(:disabled) {
-  background: #edf5fa;
-  border-color: #c9dfec;
 }
 .button.small {
   font-size: 11px;
@@ -103,15 +92,9 @@
   background: #e9f6f0;
   color: #45866c;
 }
-.status-running,
-.status-ready {
+.status-running {
   background: #eaf4fc;
   color: #4989b4;
-}
-.status-paused,
-.status-pausing {
-  background: #f8ead8;
-  color: #9a7040;
 }
 .status-failed {
   background: #fcf0ed;

@@ -29,7 +29,6 @@ const icons: Record<string, typeof Database> = {
   chart: ChartColumn,
 };
 const statusEmoji: Record<string, string> = {
-  ready: '⏳',
   running: '🔄',
   succeeded: '✅',
   completed: '✅',

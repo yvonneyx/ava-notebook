@@ -187,8 +187,6 @@
   .case-section {
     margin-top: 28px;
   }
-}
-@media (max-width: 560px) {
   .case-grid {
     grid-template-columns: 1fr;
   }
@@ -208,8 +206,6 @@
   .home-content {
     padding: 56px 26px;
   }
-}
-@media (max-width: 800px) {
   .home h1 {
     font-size: 32px;
   }
@@ -218,14 +214,10 @@
   .home-content {
     padding: 32px 18px;
   }
-}
-@media (max-width: 560px) {
   .home h1 {
     font-size: clamp(20px, 5.6vw, 29px);
     letter-spacing: -1px;
   }
-}
-@media (max-width: 560px) {
   .home-heading {
     padding-bottom: 28px;
   }

@@ -13,21 +13,14 @@
     transform: translateY(0);
   }
 }
-.reason-step[open] .disclosure-chevron {
-  transform: rotate(90deg);
-}
 button:not(:disabled),
-a.button,
-.data-step {
+a.button {
   transition: background 160ms, border-color 160ms, box-shadow 180ms,
     transform 180ms;
 }
 button:not(:disabled):active,
 a.button:active {
   transform: scale(0.975);
-}
-.disclosure-chevron {
-  transition: transform 200ms;
 }
 details[open] > :not(summary) {
   animation: appear 200ms ease-out;

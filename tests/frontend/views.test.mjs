@@ -15,7 +15,6 @@ let server,
   AnalysisText,
   Bars,
   notebookSteps,
-  stepDatasets,
   stepNarrative;
 before(async () => {
   server = await createServer({
@@ -27,14 +26,18 @@ before(async () => {
   ({ default: EvidenceViews } = await server.ssrLoadModule(
     '/src/features/evidence/EvidenceViews.tsx',
   ));
-  ({ default: Notebook } = await server.ssrLoadModule('/src/features/notebook/Notebook.tsx'));
-  ({ default: Detail } = await server.ssrLoadModule('/src/features/evidence/EvidenceDetail.tsx'));
+  ({ default: Notebook } = await server.ssrLoadModule(
+    '/src/features/notebook/Notebook.tsx',
+  ));
+  ({ default: Detail } = await server.ssrLoadModule(
+    '/src/features/evidence/EvidenceDetail.tsx',
+  ));
   ({ default: SqlCode } = await server.ssrLoadModule('/src/ui/SqlCode.tsx'));
   ({ default: AnalysisText } = await server.ssrLoadModule(
     '/src/ui/AnalysisText.tsx',
   ));
   ({ Bars } = await server.ssrLoadModule('/src/ui/BarChart.tsx'));
-  ({ notebookSteps, stepDatasets, stepNarrative } = await server.ssrLoadModule(
+  ({ notebookSteps, stepNarrative } = await server.ssrLoadModule(
     '/src/features/notebook/steps.ts',
   ));
 });
@@ -359,7 +362,9 @@ test('new direct events group retries, display the report and preserve every nod
   const steps = notebookSteps(quick);
   assert.equal(steps.length, 1);
   assert.equal(steps[0].nodes.length, quick.nodes.length);
-  assert.deepEqual(stepDatasets(quick, steps[0]).at(-1).rows, [{ total: 10 }]);
+  assert.deepEqual(evidenceDatasets(quick, steps[0].node).at(-1).rows, [
+    { total: 10 },
+  ]);
   const narrative = stepNarrative(quick, steps[0]);
   assert.equal(narrative.conclusion, '销售总额为 10。');
   const html = render(Notebook, { run: quick, onSelect: noop });
@@ -433,7 +438,7 @@ test('loop notebook and evidence views include queryless steps, all query result
   const steps = notebookSteps(loop);
   assert.equal(steps.length, 4);
   assert.deepEqual(
-    stepDatasets(loop, steps[0]).map((dataset) => dataset.id),
+    evidenceDatasets(loop, steps[0].node).map((dataset) => dataset.id),
     ['bad', 'sample'],
   );
   assert.deepEqual(

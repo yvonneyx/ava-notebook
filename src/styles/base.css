@@ -81,11 +81,6 @@ kbd {
 .spin {
   animation: spin 1s linear infinite;
 }
-.success-notice {
-  background: #eff9f4;
-  border-color: #dceee4;
-  color: #51836b;
-}
 .error-notice {
   background: #fff6f4;
   border-color: #eed9d3;

@@ -1,5 +1,4 @@
 import type { Evidence, Run } from '../../../shared/contracts';
-import { evidenceDatasets } from '../../domain/evidence';
 
 export type NotebookStep = { node: Evidence; nodes: Evidence[] };
 
@@ -13,12 +12,6 @@ export function notebookSteps(run: Run): NotebookStep[] {
     groups.set(node.stepId, group);
   }
   return [...groups.values()];
-}
-
-export function stepDatasets(run: Run, step: NotebookStep) {
-  return step.nodes
-    .filter((node) => node.kind === 'query')
-    .flatMap((node) => evidenceDatasets(run, node));
 }
 
 export function stepNarrative(run: Run, step: NotebookStep) {

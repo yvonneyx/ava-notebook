@@ -1,7 +1,6 @@
 import type { Run } from '../../shared/contracts';
 
 export const statusLabels: Record<string, string> = {
-  ready: '待执行',
   running: '执行中',
   succeeded: '已完成',
   completed: '已完成',

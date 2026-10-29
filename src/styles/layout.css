@@ -67,8 +67,6 @@
   .topbar > .header-actions {
     gap: 7px;
   }
-}
-@media (max-width: 560px) {
   .topbar .text-button {
     font-size: 10px;
   }
@@ -94,20 +92,9 @@
     display: inline-flex;
     margin-left: -6px;
   }
-}
-@media (max-width: 800px) {
   .topbar {
     padding: 0 20px;
   }
-}
-@media (max-width: 800px) {
-  .export-button {
-    font-size: 0;
-    padding: 6px 8px;
-    gap: 0;
-  }
-}
-@media (max-width: 800px) {
   .sidebar-open > .main {
     margin-left: 62px;
   }
@@ -116,8 +103,6 @@
   .sidebar-open > .main {
     margin-left: 0;
   }
-}
-@media (max-width: 560px) {
   .topbar {
     height: 48px;
     padding: 0 16px;
@@ -133,8 +118,6 @@
   .app-shell {
     padding: 0;
   }
-}
-@media (max-width: 560px) {
   .main {
     border: 0;
   }
