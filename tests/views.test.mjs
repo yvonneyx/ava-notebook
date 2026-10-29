@@ -11,6 +11,8 @@ let server,
   EvidenceViews,
   Notebook,
   Detail,
+  SqlCode,
+  AnalysisText,
   Bars,
   notebookSteps,
   stepDatasets,
@@ -27,6 +29,10 @@ before(async () => {
   ));
   ({ default: Notebook } = await server.ssrLoadModule('/src/Notebook.tsx'));
   ({ default: Detail } = await server.ssrLoadModule('/src/Detail.tsx'));
+  ({ default: SqlCode } = await server.ssrLoadModule('/src/SqlCode.tsx'));
+  ({ default: AnalysisText } = await server.ssrLoadModule(
+    '/src/AnalysisText.tsx',
+  ));
   ({ Bars } = await server.ssrLoadModule('/src/DataViews.tsx'));
   ({ notebookSteps, stepDatasets, stepNarrative } = await server.ssrLoadModule(
     '/src/notebook-steps.ts',
@@ -47,13 +53,13 @@ const source = {
 };
 const model0 = {
   id: 'm0',
-  kind: 'reason',
+  kind: 'translate',
   sequence: 1,
   title: '探索',
   parents: ['context'],
   status: 'succeeded',
   payload: {},
-  step: 0,
+  stepId: 'step-a',
 };
 const q0 = {
   id: 'q0',
@@ -62,9 +68,8 @@ const q0 = {
   title: '查询 1',
   parents: ['m0'],
   status: 'succeeded',
-  payload: { sql: 'SELECT 2 AS value', originalSQL: 'SELECT 1 AS value' },
-  step: 0,
-  checkpoint: 'q0',
+  payload: { sql: 'SELECT 2 AS value' },
+  stepId: 'step-a',
 };
 const r0 = {
   id: 'r0',
@@ -94,7 +99,7 @@ const model1 = {
   id: 'm1',
   sequence: 6,
   parents: ['m0', 'r0', 'r1'],
-  step: 1,
+  stepId: 'step-b',
 };
 const conclusion = {
   id: 'end',
@@ -103,7 +108,7 @@ const conclusion = {
   title: '结论',
   parents: ['m1'],
   status: 'completed',
-  payload: { text: '**已验证**' },
+  payload: { conclusion: '结果为 2。' },
 };
 const unrelated = {
   ...r1,
@@ -121,6 +126,54 @@ const run = {
 const noop = () => {};
 const render = (Component, props) =>
   renderToStaticMarkup(React.createElement(Component, props));
+
+test('SQL highlighting preserves whitespace and safely separates literals, comments and identifiers', () => {
+  const sql = `select\tSUM(sales), 1.5e-2, 'it''s <script>', "select", 销售额, select_count
+FROM data -- SELECT 'ignored'
+/* WHERE 123 */ WHERE sales >= .5;`;
+  const html = render(SqlCode, { sql });
+  assert.match(html, /class="sql-keyword">select<\/span>/);
+  assert.match(html, /class="sql-function">SUM<\/span>/);
+  assert.match(html, /class="sql-number">1\.5e-2<\/span>/);
+  assert.match(html, /class="sql-number">\.5<\/span>/);
+  assert.match(
+    html,
+    /class="sql-string">&#x27;it&#x27;&#x27;s &lt;script&gt;&#x27;<\/span>/,
+  );
+  assert.match(html, /class="sql-identifier">&quot;select&quot;<\/span>/);
+  assert.match(
+    html,
+    /class="sql-comment">-- SELECT &#x27;ignored&#x27;<\/span>/,
+  );
+  assert.match(html, /class="sql-comment">\/\* WHERE 123 \*\/<\/span>/);
+  assert.ok(html.includes('销售额, select_count\n'));
+  assert.doesNotMatch(html, /<script>/);
+  const escaped = renderToStaticMarkup(React.createElement('code', null, sql));
+  assert.equal(
+    html
+      .replace(/<span[^>]*>|<\/span>/g, '')
+      .replace(' class="language-sql"', ''),
+    escaped,
+  );
+  assert.equal(render(SqlCode, {}), '<code class="language-sql"></code>');
+});
+
+test('notebook, evidence and Markdown SQL blocks share highlighting', () => {
+  const props = { run, node: q0, onSelect: noop };
+  for (const html of [
+    render(Notebook, props),
+    render(EvidenceViews, props),
+    render(AnalysisText, { text: '```SQL\nSELECT 2 AS value\n```' }),
+  ]) {
+    assert.match(html, /class="sql-keyword">SELECT<\/span>/);
+    assert.match(html, /class="sql-number">2<\/span>/);
+  }
+  const plain = render(AnalysisText, {
+    text: '`SELECT`\n\n```text\nSELECT 2\n```',
+  });
+  assert.doesNotMatch(plain, /sql-keyword/);
+  assert.match(plain, /<code>SELECT<\/code>/);
+});
 
 test('three views follow exact query/result edges, including multiple queries and conclusion ancestors', () => {
   for (const node of [q0, r0]) {
@@ -151,11 +204,11 @@ test('three views follow exact query/result edges, including multiple queries an
   );
 });
 
-test('pending, failed, empty, inherited and missing evidence do not acquire another query’s data', () => {
-  const pending = { ...q0, id: 'pending', status: 'paused' };
+test('pending, failed, empty and missing evidence do not acquire another query’s data', () => {
+  const pending = { ...q0, id: 'pending', status: 'running' };
   const branch = {
     ...run,
-    nodes: [{ ...q0, inherited: true }, r0, pending, unrelated],
+    nodes: [q0, r0, pending, unrelated],
   };
   assert.equal(evidenceDatasets(branch, pending)[0].rows, undefined);
   assert.equal(
@@ -174,7 +227,7 @@ test('pending, failed, empty, inherited and missing evidence do not acquire anot
   const cycle = { ...conclusion, parents: ['end', 'missing'] };
   assert.deepEqual(evidenceDatasets({ ...run, nodes: [cycle] }, cycle), []);
   assert.deepEqual(
-    evidenceDatasets(run, { kind: 'reason', id: 'unknown', parents: [] }),
+    evidenceDatasets(run, { kind: 'translate', id: 'unknown', parents: [] }),
     [],
   );
   const [preview] = evidenceDatasets(run, { kind: 'source' });
@@ -286,43 +339,6 @@ test('every evidence kind exposes accessible tabs while retaining source, waitin
   assert.match(chartHtml, /柱状图/);
 });
 
-test('SQL drafts stay editable and execution controls remain outside the view tabs', () => {
-  const node = { ...q0, status: 'paused' };
-  const paused = {
-    ...run,
-    status: 'paused',
-    activeNodeId: 'q0',
-    nodes: [node],
-  };
-  const draft = { sql: 'SELECT 8 AS value', instruction: '核对结果' };
-  const common = {
-    run: paused,
-    busy: false,
-    onEdit: noop,
-    onContinue: noop,
-    onFork: noop,
-    onSelect: noop,
-  };
-  const html = render(Notebook, { ...common, drafts: { q0: draft } });
-  assert.match(html, /SELECT 8 AS value/);
-  assert.match(html, /应用并运行/);
-  assert.ok(html.indexOf('应用并运行') < html.indexOf('class="cell-output"'));
-  assert.match(html, /Shift\+Enter/);
-  const detail = render(Detail, {
-    ...common,
-    node,
-    draft,
-    onClose: noop,
-    onChart: noop,
-  });
-  assert.match(detail, /SELECT 8 AS value/);
-  assert.match(detail, /核对结果/);
-  assert.match(detail, /应用修改并继续/);
-  assert.match(detail, /修改草稿 · 尚未执行/);
-  assert.match(detail, /已记录的 SQL/);
-  assert.match(detail, /SELECT 2 AS value/);
-});
-
 test('bar charts use a shared zero baseline instead of drawing negative values as positive', () => {
   const html = render(Bars, {
     title: 'signed',
@@ -337,191 +353,262 @@ test('bar charts use a shared zero baseline instead of drawing negative values a
   assert.match(html, /style="left:50%;width:0%"/);
 });
 
-test('one loop round contains its own queries and results, with review-linked findings and stable node anchors', () => {
-  const model = {
-    ...model0,
-    payload: {
-      action: 'EXPLORE',
-      text: '[EXPLORE]\n-- Purpose: 核对金额口径\n```sql\nSELECT 2\n```',
-    },
-  };
-  const review = {
-    ...model1,
-    payload: {
-      action: 'REFINE',
-      text: '[REFINE]\nFindings:\n- 两条结果需要分别核对。\nPlan:\n- 检查贡献变化。\nNext: [SQL]',
-    },
-  };
-  const fixture = { ...run, nodes: [model, q0, r0, q1, r1, review] };
-  const steps = notebookSteps(fixture);
-  assert.equal(steps.length, 2);
-  assert.deepEqual(
-    steps[0].nodes.map((n) => n.id),
-    ['m0', 'q0', 'r0', 'q1', 'r1'],
-  );
-  assert.deepEqual(
-    stepDatasets(fixture, steps[0]).map((d) => d.query.id),
-    ['q0', 'q1'],
+test('new direct events group retries, display the report and preserve every node anchor', async () => {
+  const { directRun } = await import('./fixtures/direct-events.mjs');
+  const quick = { ...directRun(), source };
+  const steps = notebookSteps(quick);
+  assert.equal(steps.length, 1);
+  assert.equal(steps[0].nodes.length, quick.nodes.length);
+  assert.deepEqual(stepDatasets(quick, steps[0]).at(-1).rows, [{ total: 10 }]);
+  const narrative = stepNarrative(quick, steps[0]);
+  assert.equal(narrative.conclusion, '销售总额为 10。');
+  const html = render(Notebook, { run: quick, onSelect: noop });
+  const visibleText = html.replace(/<[^>]*>/g, '');
+  for (const label of [
+    '查询说明',
+    narrative.introduction,
+    'SELECT SUM(sales)',
+    '证据局限',
+    narrative.limitations,
+    '分析结论',
+    narrative.conclusion,
+    '后续计划',
+    narrative.nextStep,
+  ])
+    assert.ok(visibleText.includes(label), label);
+  assert.ok(
+    visibleText.indexOf('查询说明') < visibleText.indexOf('SELECT SUM(sales)'),
   );
   assert.ok(
-    stepDatasets(fixture, steps[1]).every((d) =>
-      d.label.startsWith('输入依据'),
-    ),
+    visibleText.indexOf('SELECT SUM(sales)') <
+      visibleText.indexOf('结果 · 1 行'),
   );
-  const narrative = stepNarrative(fixture, steps[0]);
-  assert.equal(narrative.introduction, '核对金额口径');
-  assert.match(narrative.conclusion, /两条结果/);
-  assert.equal(narrative.review.id, 'm1');
-  assert.doesNotMatch(narrative.conclusion, /检查贡献变化/);
-  const html = render(Notebook, {
-    run: fixture,
-    busy: false,
-    drafts: {},
-    onEdit: noop,
-    onContinue: noop,
-    onFork: noop,
+  assert.ok(html.indexOf('结果 · 1 行') < html.indexOf('证据局限'));
+  assert.ok(html.indexOf('证据局限') < html.indexOf('分析结论'));
+  assert.ok(html.indexOf('分析结论') < html.indexOf('后续计划'));
+  assert.equal(html.split(quick.question).length - 1, 2);
+  assert.doesNotMatch(html, /分析问题/);
+  assert.doesNotMatch(html, /direct-report|direct-answer/);
+  assert.match(html, /aria-label="00 加载数据"/);
+  assert.match(html, /aria-label="第 0 步">00<\/span>/);
+  assert.match(html, /aria-label="第 1 步">01<\/span>/);
+  assert.match(html, /class="notebook-source"><details open="">/);
+  assert.doesNotMatch(html, /已完成模型检查|重跑此单元格|编辑 SQL|<textarea/);
+  assert.doesNotMatch(
+    html.match(/<h2>快速分析<\/h2>(.*?)<\/div>/)?.[1] || '',
+    /status-failed/,
+  );
+  for (const node of quick.nodes)
+    assert.equal(html.split(`id="step-${node.id}"`).length - 1, 1, node.id);
+  const summary = quick.nodes.find((node) => node.kind === 'summary');
+  const detail = render(Detail, {
+    node: summary,
+    run: quick,
+    onClose: noop,
+    onChart: noop,
     onSelect: noop,
   });
-  assert.equal((html.match(/<article/g) || []).length, 2);
-  assert.equal((html.match(/role="tab"/g) || []).length, 6);
-  for (const id of ['m0', 'q0', 'r0', 'q1', 'r1', 'm1'])
-    assert.equal(
-      (html.match(new RegExp(`id="step-${id}"`, 'g')) || []).length,
-      1,
-    );
-  assert.match(html, /本步结论/);
-  assert.match(html, /后续核验/);
-  const final = {
-    ...conclusion,
-    payload: {
-      text: 'Verification:\n已核验。\nConclusion:\n贡献下降。',
-      completionReason: 'confirmed',
-    },
+  for (const label of [
+    narrative.conclusion,
+    narrative.limitations,
+    narrative.nextStep,
+    'Token 用量',
+  ])
+    assert.ok(detail.includes(label), label);
+  assert.deepEqual(
+    evidenceDatasets(quick, summary).map((dataset) => dataset.query.id),
+    ['query-ok'],
+  );
+  const { default: App } = await server.ssrLoadModule('/src/App.tsx');
+  const home = render(App, {});
+  assert.match(home, /aria-label="分析模式"/);
+  assert.match(home, /快速模式/);
+  assert.match(home, /探索模式/);
+  assert.doesNotMatch(home, /查询前暂停|逐步检查/);
+});
+
+test('loop notebook and evidence views include queryless steps, all query results and final verification', async () => {
+  const { loopRun } = await import('./fixtures/loop-events.mjs');
+  const loop = { ...loopRun(), source };
+  const steps = notebookSteps(loop);
+  assert.equal(steps.length, 4);
+  assert.deepEqual(
+    stepDatasets(loop, steps[0]).map((dataset) => dataset.id),
+    ['bad', 'sample'],
+  );
+  assert.deepEqual(
+    evidenceDatasets(loop, steps[1].node).map((dataset) => dataset.id),
+    ['sample'],
+  );
+  assert.deepEqual(
+    evidenceDatasets(loop, loop.nodes.at(-1)).map((dataset) => dataset.id),
+    ['total'],
+  );
+  const html = render(Notebook, { run: loop, onSelect: noop });
+  assert.equal(html.split(loop.question).length - 1, 2);
+  assert.doesNotMatch(html, /分析问题/);
+  assert.doesNotMatch(html, /direct-report|direct-answer/);
+  assert.match(html, /class="notebook-source"><details open="">/);
+  for (const text of [
+    '探索数据',
+    '修正分析',
+    '执行查询',
+    '核验结论',
+    '使用 sales 字段求和',
+    '已检查两行数据',
+    'Unknown column',
+  ])
+    assert.ok(html.includes(text), text);
+  for (const node of loop.nodes)
+    assert.equal(html.split(`id="step-${node.id}"`).length - 1, 1, node.id);
+  const running = { ...loopRun({ running: true }), source };
+  const runningHtml = render(Notebook, { run: running, onSelect: noop });
+  assert.doesNotMatch(
+    runningHtml.match(/<h2>探索数据<\/h2>(.*?)<\/div>/)?.[1] || '',
+    /执行中/,
+  );
+  assert.match(runningHtml, /正在分析数据|查询执行中/);
+  const unconfirmed = { ...loopRun({ confirmed: false }), source };
+  const unconfirmedHtml = render(Notebook, {
+    run: unconfirmed,
+    onSelect: noop,
+  });
+  assert.match(unconfirmedHtml, /最终查询|本次未收到核验结论/);
+  assert.doesNotMatch(unconfirmedHtml, /class="round-finding"/);
+  const failed = { ...loopRun({ failed: true }), source };
+  assert.match(
+    render(Notebook, { run: failed, onSelect: noop }),
+    /Model unavailable/,
+  );
+});
+
+test('SQL steps show query cells once and retain the narrative when no query event exists', async () => {
+  const { loopRun } = await import('./fixtures/loop-events.mjs');
+  const loop = { ...loopRun(), source };
+  const step = loop.nodes.find((node) => node.id === 'answer');
+  const query = loop.nodes.find((node) => node.id === 'total');
+  step.payload.text = `[SQL]\n\`\`\`sql\n${query.payload.sql}\n\`\`\``;
+  const original = structuredClone(step.payload);
+  const html = render(Notebook, { run: loop, onSelect: noop });
+  const article = html.match(
+    /<article[^>]*id="step-answer"[\s\S]*?<\/article>/,
+  )[0];
+  const text = article.replace(/<[^>]*>/g, '');
+  assert.equal(text.split(query.payload.sql).length - 1, 1);
+  assert.doesNotMatch(text, /分析过程|\[SQL\]/);
+  assert.match(article, /结果 · 1 行|step-total:end/);
+  assert.deepEqual(step.payload, original);
+
+  const failed = {
+    ...loop,
+    nodes: loop.nodes.map((node) =>
+      node.id === query.id
+        ? {
+            ...node,
+            status: 'failed',
+            payload: { ...node.payload, error: { message: 'Query failed' } },
+          }
+        : node,
+    ),
   };
+  assert.match(
+    render(Notebook, { run: failed, onSelect: noop }),
+    /Query failed/,
+  );
+
+  const withoutQuery = {
+    ...loop,
+    nodes: loop.nodes.filter(
+      (node) => node.stepId !== step.id || node.id === step.id,
+    ),
+  };
+  const fallback = notebookSteps(withoutQuery).find(
+    (item) => item.node.id === step.id,
+  );
   assert.equal(
-    notebookSteps({ ...fixture, nodes: [...fixture.nodes, final] }).length,
-    2,
+    stepNarrative(withoutQuery, fallback).introduction,
+    original.text,
   );
-  const unfinished = stepNarrative(
-    { ...fixture, nodes: [model, q0] },
-    notebookSteps({ ...fixture, nodes: [model, q0] })[0],
+});
+
+test('failed direct summaries leave SQL and results visible without a fabricated conclusion', async () => {
+  const { directRun } = await import('./fixtures/direct-events.mjs');
+  const quick = { ...directRun({ summaryError: true }), source };
+  const html = render(Notebook, { run: quick, onSelect: noop });
+  assert.match(html, /Invalid summary|SELECT SUM\(sales\)/);
+  assert.match(html, /本次分析未生成查询说明/);
+  assert.doesNotMatch(
+    html,
+    /class="round-finding"|class="direct-answer"|分析完成|等待模型核验/,
   );
-  assert.match(unfinished.conclusion, /等待查询执行/);
-});
-
-test('a grouped round edits the currently paused query without mixing in prior results', () => {
-  const fixture = {
-    ...run,
-    status: 'paused',
-    activeNodeId: 'q1',
-    nodes: [model0, q0, r0, { ...q1, status: 'paused' }],
+  const summary = quick.nodes.find((node) => node.kind === 'summary');
+  summary.payload.error = {
+    name: 'AI_NoObjectGeneratedError',
+    message: 'Could not parse',
+    responseText: '',
+    finishReason: 'length',
   };
-  const html = render(Notebook, {
-    run: fixture,
-    busy: false,
-    drafts: { q1: { sql: 'SELECT 99 AS value' } },
-    onEdit: noop,
-    onContinue: noop,
-    onFork: noop,
+  const detail = render(Detail, {
+    node: summary,
+    run: quick,
+    onClose: noop,
+    onChart: noop,
     onSelect: noop,
   });
-  assert.equal((html.match(/<article/g) || []).length, 1);
-  assert.equal((html.match(/<textarea/g) || []).length, 1);
-  assert.match(html, /SELECT 99 AS value/);
-  assert.match(html, /应用并运行/);
-  const step = notebookSteps(fixture)[0];
-  assert.equal(stepDatasets(fixture, step)[1].rows, undefined);
+  assert.match(detail, /模型返回（最多 3000 字符）/);
+  assert.match(detail, /（空响应）/);
+  assert.match(detail, /结束原因：length/);
 });
 
-test('notebook keeps every query input above its own output and does not repeat SQL in review rounds', () => {
-  const html = render(Notebook, {
-    run: { ...run, nodes: [model0, q0, r0, q1, r1, model1] },
-    drafts: {},
-    busy: false,
-    onEdit: noop,
-    onContinue: noop,
-    onFork: noop,
-    onSelect: noop,
+test('stepId keeps sub-analyses separate and completed SQL stays folded', async () => {
+  const { directRun } = await import('./fixtures/direct-events.mjs');
+  const quick = directRun({ retry: false });
+  const second = directRun({ retry: false });
+  second.nodes = second.nodes.map((node) => ({
+    ...node,
+    id: `other-${node.id}`,
+    stepId: 'step-b',
+    parents: node.parents.map((id) => `other-${id}`),
+  }));
+  const steps = notebookSteps({
+    ...quick,
+    nodes: [...quick.nodes, ...second.nodes],
   });
-  assert.equal((html.match(/aria-label="SQL 单元格 /g) || []).length, 2);
-  assert.equal((html.match(/<textarea/g) || []).length, 2);
-  assert.equal((html.match(/SELECT 2 AS value/g) || []).length, 1);
-  assert.equal((html.match(/SELECT 3 AS value/g) || []).length, 1);
-  for (const [query, result, value] of [
-    ['q0', 'r0', 2],
-    ['q1', 'r1', 3],
-  ]) {
-    const cell = html.slice(
-      html.indexOf(`id="step-${query}"`),
-      html.indexOf(`id="step-${result}"`) + 1,
-    );
-    assert.match(cell, new RegExp(`SELECT ${value} AS value`));
-  }
-  assert.match(html, /查看本轮引用的 2 份依据/);
-  assert.doesNotMatch(html, /role="tab"[^>]*>[^<]*SQL/);
-});
-
-test('only the paused query is editable in an active notebook; historical drafts label saved outputs', () => {
-  const props = {
-    drafts: { q0: { sql: 'SELECT 99 AS value' } },
-    busy: false,
-    onEdit: noop,
-    onContinue: noop,
-    onFork: noop,
-    onSelect: noop,
-  };
-  const historical = render(Notebook, {
-    ...props,
-    run: { ...run, nodes: [model0, q0, r0] },
-  });
-  assert.match(historical, /SELECT 99 AS value/);
-  assert.match(historical, /展示上次执行结果；SQL 修改后需重新执行/);
-  assert.match(historical, /重跑会创建新分支，保留当前笔记/);
-  const active = render(Notebook, {
-    ...props,
-    run: {
-      ...run,
-      status: 'paused',
-      activeNodeId: 'q1',
-      nodes: [model0, q0, r0, q1],
-    },
-  });
-  assert.equal((active.match(/<textarea/g) || []).length, 1);
-  assert.match(active, /aria-label="编辑 SQL 单元格 2"/);
-  assert.doesNotMatch(active, /aria-label="编辑 SQL 单元格 1"/);
-  assert.match(active, /运行后在下一条查询前暂停/);
-});
-
-test('completed SQL folds for reading while pending, failed and modified SQL stays open', () => {
-  const notebook = (changes = {}, drafts = {}, query = q0) =>
-    render(Notebook, {
-      run: { ...run, nodes: [model0, query, r0], ...changes },
-      drafts,
-      busy: false,
-      onEdit: noop,
-      onContinue: noop,
-      onFork: noop,
-      onSelect: noop,
-    });
-  const completed = notebook();
-  assert.match(completed, /<details class="cell-input">/);
-  assert.match(completed, /结果 · 1 行/);
-  assert.match(completed, /<td class="numeric">2<\/td>/);
-  assert.doesNotMatch(completed, /等待模型核验|本轮尚未形成结论|In \[|Out \[/);
-  for (const html of [
-    notebook({ status: 'paused', activeNodeId: q0.id }),
-    notebook({}, { q0: { sql: 'SELECT 99 AS value' } }),
-    notebook(
-      {},
-      {},
-      {
-        ...q0,
-        status: 'failed',
-        payload: { ...q0.payload, error: { message: '查询失败' } },
-      },
+  assert.equal(steps.length, 2);
+  assert.ok(steps[0].nodes.every((node) => node.stepId === 'step-a'));
+  assert.ok(steps[1].nodes.every((node) => node.stepId === 'step-b'));
+  const html = render(Notebook, { run: { ...quick, source }, onSelect: noop });
+  assert.match(html, /<details class="cell-input">/);
+  const failed = {
+    ...quick,
+    status: 'failed',
+    nodes: quick.nodes.map((node) =>
+      node.kind === 'query' ? { ...node, status: 'failed' } : node,
     ),
-    notebook({ nodes: [model0, q0] }),
-  ]) {
-    assert.match(html, /<details class="cell-input" open="">/);
-  }
+    source,
+  };
+  assert.match(
+    render(Notebook, { run: failed, onSelect: noop }),
+    /<details class="cell-input" open="">/,
+  );
+});
+
+test('direct layout retains long questions and pending steps without showing a premature answer', async () => {
+  const { directRun } = await import('./fixtures/direct-events.mjs');
+  const quick = { ...directRun({ retry: false }), source };
+  const question = `${quick.question}请按地区分别核验，再说明统计口径。`;
+  const html = render(Notebook, {
+    run: { ...quick, question },
+    onSelect: noop,
+  });
+  assert.ok(html.includes(`<p class="notebook-question">${question}</p>`));
+
+  const pending = {
+    ...quick,
+    status: 'running',
+    nodes: [{ ...quick.nodes[0], status: 'running' }],
+  };
+  const pendingHtml = render(Notebook, { run: pending, onSelect: noop });
+  assert.match(pendingHtml, /正在生成查询/);
+  assert.doesNotMatch(pendingHtml, /class="direct-answer"|销售总额为 10/);
 });

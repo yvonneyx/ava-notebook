@@ -20,11 +20,8 @@ import {
   Settings2,
   ChevronDown,
   LoaderCircle,
-  Pause,
-  Play,
   Square,
   Download,
-  GitBranch,
   Network,
   X,
   Check,
@@ -32,29 +29,24 @@ import {
   Search,
   ChevronRight,
   NotebookPen,
+  Trash2,
 } from 'lucide-react';
 import { api, post, browserMode } from './api';
 import { readLocal, writeLocal } from './browser-store';
-import type { Run, Source, Mode, Session, Evidence } from './types';
-import { statusLabels, isActive } from './types';
+import type { Run, Source, Session, Evidence } from './types';
+import { isActive } from './types';
+import StatusIcon from './StatusIcon';
 import Notebook from './Notebook';
 import Detail from './Detail';
 import { DataTable } from './DataViews';
 const Graph = lazy(() => import('./Graph'));
-const modeOptions = (
-  <>
-    <option value="auto">连续分析</option>
-    <option value="query">查询前暂停</option>
-    <option value="step">逐步检查</option>
-  </>
-);
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [runs, setRuns] = useState<Run[]>([]);
   const [run, setRun] = useState<Run | null>(null);
   const [source, setSource] = useState<Source | null>(null);
   const [question, setQuestion] = useState('');
-  const [mode, setMode] = useState<Mode>('auto');
+  const [strategy, setStrategy] = useState<Run['strategy']>('direct');
   const [view, setView] = useState<'notebook' | 'graph'>('notebook');
   const [selected, setSelected] = useState('');
   const [busy, setBusy] = useState(false);
@@ -67,10 +59,6 @@ export default function App() {
   const [search, setSearch] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [dragging, setDragging] = useState(false);
-  const [drafts, setDrafts] = useState<
-    Record<string, { sql?: string; instruction?: string }>
-  >({});
-  const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
   const [composerReady, setComposerReady] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const dialog = useRef<HTMLDialogElement>(null);
@@ -91,23 +79,13 @@ export default function App() {
     setRuns(await api<Run[]>('/runs'));
   }
   async function openRun(id: string) {
-    const [next, savedDrafts] = await Promise.all([
-      api<Run>(`/runs/${id}`),
-      browserMode
-        ? readLocal<Record<string, { sql?: string; instruction?: string }>>(
-            'drafts',
-            id,
-          )
-        : undefined,
-    ]);
+    const next = await api<Run>(`/runs/${id}`);
     startTransition(() => {
       addTransitionType(run ? 'switch-run' : 'nav-forward');
       setRun(next);
-      setDrafts(savedDrafts || {});
       setView('notebook');
       setSidebarOpen(false);
       setSelected('');
-      setCollapsed(new Set());
     });
     history.replaceState(null, '', `?run=${id}`);
   }
@@ -133,10 +111,12 @@ export default function App() {
         const composer = await readLocal<{
           source: Source | null;
           question: string;
+          strategy: Run['strategy'];
         }>('drafts', 'composer');
         if (composer) {
           setSource(composer.source);
           setQuestion(composer.question);
+          if (composer.strategy) setStrategy(composer.strategy);
         }
         setComposerReady(true);
       }
@@ -147,10 +127,12 @@ export default function App() {
   }, []);
   useEffect(() => {
     if (browserMode && composerReady)
-      void writeLocal('drafts', 'composer', { source, question }).catch(
-        (error) => setError(error.message),
-      );
-  }, [source, question, composerReady]);
+      void writeLocal('drafts', 'composer', {
+        source,
+        question,
+        strategy,
+      }).catch((error) => setError(error.message));
+  }, [source, question, strategy, composerReady]);
   useEffect(() => {
     if (settings) dialog.current?.showModal();
     else dialog.current?.close();
@@ -208,32 +190,16 @@ export default function App() {
       setSource(null);
       setQuestion('');
       setSelected('');
-      setDrafts({});
       setSidebarOpen(false);
       setView('notebook');
       setError('');
       history.replaceState(null, '', '/');
     });
   }
-  function editNode(id: string, value: { sql?: string; instruction?: string }) {
-    const next = { ...drafts, [id]: { ...drafts[id], ...value } };
-    setDrafts(next);
-    if (browserMode && run)
-      void writeLocal('drafts', run.id, next).catch((error) =>
-        setError(error.message),
-      );
-  }
-  function decisionFor(
-    id: string,
-    value: { sql?: string; instruction?: string } = {},
-  ) {
-    const draft = { ...drafts[id], ...value };
-    return {
-      ...(draft.sql !== undefined ? { sql: draft.sql } : {}),
-      ...(draft.instruction?.trim()
-        ? { instruction: draft.instruction.trim() }
-        : {}),
-    };
+  async function deleteRun(id: string) {
+    await api(`/runs/${id}`, { method: 'DELETE' });
+    setRuns((current) => current.filter((item) => item.id !== id));
+    if (new URLSearchParams(location.search).get('run') === id) newAnalysis();
   }
   function jumpToStep(id: string) {
     setView('notebook');
@@ -249,48 +215,17 @@ export default function App() {
   function selectNode(id: string) {
     startTransition(() => setSelected(id));
   }
-  async function control(
-    command: string,
-    decision: { sql?: string; instruction?: string } = {},
-    nextMode?: Mode,
-  ) {
+  async function stopRun() {
     if (!run) return;
     const updated = await post<Run>(`/runs/${run.id}/control`, {
-      command,
+      command: 'stop',
       requestId: crypto.randomUUID(),
-      nodeId: run.activeNodeId,
-      ...(command === 'continue'
-        ? decisionFor(run.activeNodeId || '', decision)
-        : decision),
-      ...(nextMode ? { mode: nextMode } : {}),
     });
     setRun((current) =>
       current?.id === updated.id && current.revision > updated.revision
         ? current
         : updated,
     );
-  }
-  async function forkRun(
-    nodeId: string,
-    decision: { sql?: string; instruction?: string } = {},
-  ) {
-    const next = await post<Run>(`/runs/${run!.id}/fork`, {
-      nodeId,
-      mode: 'query',
-      requestId: crypto.randomUUID(),
-      ...decisionFor(nodeId, decision),
-    });
-    startTransition(() => {
-      addTransitionType('switch-run');
-      setRun(next);
-      setDrafts({});
-      setView('notebook');
-      setSidebarOpen(false);
-      setSelected('');
-      setCollapsed(new Set());
-    });
-    history.replaceState(null, '', `?run=${next.id}`);
-    await refreshRuns();
   }
   const classicCases = runs.filter(
     (item) => item.caseStudy && item.status === 'completed',
@@ -349,7 +284,7 @@ export default function App() {
         <div className="sidebar-label">
           最近分析 <span>{historyRuns.length}</span>
         </div>
-        {historyRuns.length > 4 && (
+        {(historyRuns.length > 4 || search.length > 0) && (
           <label className="search">
             <Search size={13} />
             <input
@@ -362,15 +297,29 @@ export default function App() {
         )}
         <nav className="history-list" aria-label="分析历史">
           {filtered.map((item) => (
-            <button
+            <div
               key={item.id}
-              title={item.question}
-              aria-current={run?.id === item.id ? 'page' : undefined}
               className={`history-item ${run?.id === item.id ? 'current' : ''}`}
-              onClick={() => void act(() => openRun(item.id))}
             >
-              <strong>{item.question}</strong>
-            </button>
+              <button
+                className="history-open"
+                title={item.question}
+                aria-current={run?.id === item.id ? 'page' : undefined}
+                disabled={busy}
+                onClick={() => void act(() => openRun(item.id))}
+              >
+                <strong>{item.question}</strong>
+              </button>
+              <button
+                className="history-delete"
+                title={isActive(item) ? '停止并删除分析' : '删除分析'}
+                aria-label={`${isActive(item) ? '停止并删除分析' : '删除分析'}：${item.question}`}
+                disabled={busy}
+                onClick={() => void act(() => deleteRun(item.id))}
+              >
+                <Trash2 size={14} />
+              </button>
+            </div>
           ))}
           {!historyRuns.length && (
             <div className="history-empty">暂无分析记录</div>
@@ -437,23 +386,10 @@ export default function App() {
                 ? `${run.source.name.replace(/\.csv$/i, '')}.notebook`
                 : '新建分析'}
             </strong>
-            {run?.parentId && (
-              <button
-                className="text-button"
-                onClick={() => void act(() => openRun(run.parentId!))}
-              >
-                <GitBranch size={12} />
-                原分支
-              </button>
-            )}
           </div>
           <div className="header-actions">
             {run && (
               <>
-                {!connected && <span className="amber">连接恢复中…</span>}
-                <span className={`status status-${run.status}`}>
-                  {statusLabels[run.status]}
-                </span>
                 <a
                   aria-label="导出证据"
                   className="text-button"
@@ -470,7 +406,6 @@ export default function App() {
                                   version: 1,
                                   exportedAt: new Date().toISOString(),
                                   run,
-                                  drafts,
                                 },
                                 null,
                                 2,
@@ -641,18 +576,19 @@ export default function App() {
                         </span>
                         <ChevronDown size={12} />
                       </button>
-                      <span className="option-divider" />
-                      <label className="mode-picker">
-                        <select
-                          aria-label="执行方式"
-                          value={mode}
-                          onChange={(e) => setMode(e.target.value as Mode)}
-                        >
-                          {modeOptions}
-                        </select>
-                        <ChevronDown size={12} />
-                      </label>
                     </div>
+                    <select
+                      aria-label="分析模式"
+                      className="composer-model composer-strategy"
+                      value={strategy}
+                      disabled={busy}
+                      onChange={(event) =>
+                        setStrategy(event.target.value as Run['strategy'])
+                      }
+                    >
+                      <option value="direct">快速模式</option>
+                      <option value="loop">探索模式</option>
+                    </select>
                     <button
                       id="start-analysis"
                       aria-label="开始分析"
@@ -671,13 +607,12 @@ export default function App() {
                           const next = await post<Run>('/runs', {
                             sourceId: source!.id,
                             question,
-                            mode,
+                            strategy,
                             requestId: crypto.randomUUID(),
                           });
                           startTransition(() => {
                             addTransitionType('nav-forward');
                             setRun(next);
-                            setDrafts({});
                             setView('notebook');
                             setSelected('');
                           });
@@ -741,11 +676,11 @@ export default function App() {
                           <p>{item.caseStudy!.description}</p>
                           <div className="case-footer">
                             <small>
-                              {item.source.name} ·{' '}
-                              {item.source.rows.toLocaleString()} 行
+                              {item.strategy === 'loop' ? '探索模式' : '快速模式'}
+                              {' · '}{item.nodeCount ?? item.nodes.length} 项证据
                             </small>
                             <button
-                              className="case-review"
+                              className="button primary small case-review"
                               aria-label={`回顾：${item.caseStudy!.title}`}
                               disabled={busy}
                               onClick={() => void act(() => openRun(item.id))}
@@ -770,6 +705,7 @@ export default function App() {
                     onClick={() => {
                       setSource(run.source);
                       setQuestion(run.question);
+                      setStrategy(run.strategy);
                       setRun(null);
                       history.replaceState(null, '', '/');
                     }}
@@ -799,48 +735,27 @@ export default function App() {
                   </button>
                 </div>
                 <div className="run-controls">
+                  <div
+                    className="run-summary"
+                    role="group"
+                    aria-label="分析模式与状态"
+                  >
+                    <span className="run-mode">
+                      {run.strategy === 'loop' ? '探索模式' : '快速模式'}
+                    </span>
+                    <span className={`status status-${run.status}`} role="status">
+                      <StatusIcon status={run.status} />
+                    </span>
+                    {!connected && <span className="amber">连接恢复中…</span>}
+                  </div>
                   {active && (
                     <>
-                      <select
-                        aria-label="运行控制模式"
-                        value={run.mode}
-                        disabled={busy}
-                        onChange={(e) =>
-                          void act(() =>
-                            control('mode', {}, e.target.value as Mode),
-                          )
-                        }
-                      >
-                        {modeOptions}
-                      </select>
-                      {run.status === 'paused' ? (
-                        <button
-                          className="button primary small"
-                          disabled={
-                            busy ||
-                            drafts[run.activeNodeId || '']?.sql?.trim() === ''
-                          }
-                          onClick={() => void act(() => control('continue'))}
-                        >
-                          <Play size={13} />
-                          继续分析
-                        </button>
-                      ) : (
-                        <button
-                          className="button secondary small"
-                          disabled={busy || run.status === 'pausing'}
-                          onClick={() => void act(() => control('pause'))}
-                        >
-                          <Pause size={13} />
-                          暂停
-                        </button>
-                      )}
                       <button
                         className="icon-button stop-button"
                         disabled={busy}
                         title="停止分析"
                         aria-label="停止分析"
-                        onClick={() => void act(() => control('stop'))}
+                        onClick={() => void act(() => stopRun())}
                       >
                         <Square size={13} />
                       </button>
@@ -880,17 +795,8 @@ export default function App() {
                       <Notebook
                         key={run.id}
                         run={run}
-                        drafts={drafts}
-                        onEdit={editNode}
-                        busy={busy}
                         selected={selected}
                         onSelect={selectNode}
-                        onContinue={(decision, nextMode) =>
-                          void act(() =>
-                            control('continue', decision, nextMode),
-                          )
-                        }
-                        onFork={(id) => void act(() => forkRun(id))}
                       />
                     ) : (
                       <ViewTransition default="none" update="morph">
@@ -907,27 +813,7 @@ export default function App() {
                             nodes={run.nodes}
                             selected={selected}
                             onSelect={selectNode}
-                            collapsed={collapsed}
                           />
-                          {node?.kind === 'reason' &&
-                            node.step !== undefined && (
-                              <button
-                                className="graph-collapse button secondary"
-                                onClick={() =>
-                                  setCollapsed((current) => {
-                                    const next = new Set(current);
-                                    if (next.has(node.step!))
-                                      next.delete(node.step!);
-                                    else next.add(node.step!);
-                                    return next;
-                                  })
-                                }
-                              >
-                                {collapsed.has(node.step)
-                                  ? '展开本轮查询'
-                                  : '折叠本轮查询'}
-                              </button>
-                            )}
                         </Suspense>
                       </ViewTransition>
                     )}
@@ -942,18 +828,10 @@ export default function App() {
                     <Detail
                       key={`${run.id}-${node.id}`}
                       node={node}
-                      draft={drafts[node.id] || {}}
-                      onEdit={(value) => editNode(node.id, value)}
                       run={run}
                       busy={busy}
                       onClose={() => startTransition(() => setSelected(''))}
                       onSelect={selectNode}
-                      onContinue={(decision, nextMode) =>
-                        void act(() => control('continue', decision, nextMode))
-                      }
-                      onFork={(id, decision) =>
-                        void act(() => forkRun(id, decision))
-                      }
                       onChart={(nodeId, x, y) =>
                         void act(async () => {
                           const next = await post<Run>(

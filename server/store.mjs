@@ -1,11 +1,4 @@
-import {
-  mkdir,
-  readFile,
-  writeFile,
-  rename,
-  readdir,
-  chmod,
-} from 'node:fs/promises';
+import { mkdir, readFile, writeFile, rename, chmod } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { randomUUID, createHash } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
@@ -26,7 +19,7 @@ function openDatabase() {
       db.exec(`
         PRAGMA busy_timeout = 5000;
         PRAGMA journal_mode = WAL;
-        CREATE TABLE IF NOT EXISTS runs (
+        CREATE TABLE IF NOT EXISTS direct_runs (
           id TEXT PRIMARY KEY,
           created_at TEXT NOT NULL,
           body TEXT NOT NULL CHECK(json_valid(body))
@@ -44,36 +37,7 @@ function openDatabase() {
 }
 
 export async function initializeStore() {
-  const db = await openDatabase();
-  const dir = join(root, 'runs');
-  await mkdir(dir, { recursive: true });
-  const legacy = [];
-  for (const entry of await readdir(dir, { withFileTypes: true })) {
-    if (!entry.isDirectory() || !validId(entry.name)) continue;
-    if (db.prepare('SELECT 1 FROM runs WHERE id = ?').get(entry.name)) continue;
-    try {
-      const run = JSON.parse(
-        await readFile(join(dir, entry.name, 'run.json'), 'utf8'),
-      );
-      if (run.id !== entry.name) throw new Error('分析记录 ID 与目录不一致');
-      legacy.push(run);
-    } catch (error) {
-      if (error.code !== 'ENOENT') throw error;
-    }
-  }
-  // Keep the old JSON files as backups; never overwrite newer database records.
-  db.exec('BEGIN IMMEDIATE');
-  try {
-    const insert = db.prepare(
-      'INSERT OR IGNORE INTO runs (id, created_at, body) VALUES (?, ?, ?)',
-    );
-    for (const run of legacy)
-      insert.run(run.id, run.createdAt, JSON.stringify(run));
-    db.exec('COMMIT');
-  } catch (error) {
-    db.exec('ROLLBACK');
-    throw error;
-  }
+  await openDatabase();
 }
 
 export async function closeStore() {
@@ -87,22 +51,18 @@ export async function atomicJSON(path, value) {
   await writeFile(temporary, JSON.stringify(value), { mode: 0o600 });
   await rename(temporary, path);
 }
-export const runDir = (id) => {
-  if (!validId(id)) throw new Error('Invalid task id');
-  return join(root, 'runs', id);
-};
 export async function saveRun(run) {
   if (!validId(run.id)) throw new Error('Invalid task id');
   const db = await openDatabase();
   db.prepare(
-    `INSERT INTO runs (id, created_at, body) VALUES (?, ?, ?)
+    `INSERT INTO direct_runs (id, created_at, body) VALUES (?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET created_at = excluded.created_at, body = excluded.body`,
   ).run(run.id, run.createdAt, JSON.stringify(run));
 }
 export async function readRun(id) {
   if (!validId(id)) throw new Error('Invalid task id');
   const db = await openDatabase();
-  const row = db.prepare('SELECT body FROM runs WHERE id = ?').get(id);
+  const row = db.prepare('SELECT body FROM direct_runs WHERE id = ?').get(id);
   if (!row)
     throw Object.assign(new Error('未找到分析记录'), { code: 'ENOENT' });
   return JSON.parse(row.body);
@@ -110,31 +70,14 @@ export async function readRun(id) {
 export async function listRuns() {
   const db = await openDatabase();
   return db
-    .prepare('SELECT body FROM runs ORDER BY created_at DESC')
+    .prepare('SELECT body FROM direct_runs ORDER BY created_at DESC')
     .all()
     .map((row) => JSON.parse(row.body));
 }
-export async function saveCheckpoint(run, key, checkpoint) {
-  if (!validId(key)) throw new Error('Invalid checkpoint id');
-  await atomicJSON(
-    join(runDir(run.id), 'checkpoints', `${key}.json`),
-    checkpoint,
-  );
-}
-export async function readCheckpoint(run, key) {
-  if (!validId(key)) throw new Error('Invalid checkpoint id');
-  try {
-    return JSON.parse(
-      await readFile(
-        join(runDir(run.id), 'checkpoints', `${key}.json`),
-        'utf8',
-      ),
-    );
-  } catch (error) {
-    if (error.code === 'ENOENT' && run.parentId)
-      return readCheckpoint(await readRun(run.parentId), key);
-    throw error;
-  }
+export async function deleteRun(id) {
+  if (!validId(id)) throw new Error('Invalid task id');
+  const db = await openDatabase();
+  db.prepare('DELETE FROM direct_runs WHERE id = ?').run(id);
 }
 export function inspectCSV(bytes, name) {
   if (!/\.csv$/i.test(name)) throw new Error('一期仅支持 .csv 文件');

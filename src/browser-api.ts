@@ -1,10 +1,7 @@
-import cases from './data/cases.json';
 import type { Run, Session, Source } from './types';
-import { readLocal, listLocal, writeLocal } from './browser-store';
+import { readLocal, listLocal, writeLocal, deleteLocal } from './browser-store';
 import { chartPreview, evidenceDatasets } from './evidence-views';
 
-const savedCases = cases as Run[];
-let initialized: Promise<void> | undefined;
 let model = '';
 let baseURL = 'https://api.openai.com/v1';
 let apiKey = '';
@@ -15,16 +12,15 @@ const session = (): Session => ({
   build: '',
 });
 
-async function initialize() {
-  return (initialized ??= (async () => {
-    for (const run of savedCases) {
-      if (!(await readLocal('runs', run.id)))
-        await writeLocal('runs', run.id, run);
-    }
-  })().catch((error) => {
-    initialized = undefined;
-    throw error;
-  }));
+async function classicCases(): Promise<Run[]> {
+  return (await import('./data/cases.json')).default as unknown as Run[];
+}
+
+async function readRun(id: string) {
+  return (
+    (await readLocal<Run>('runs', id)) ||
+    structuredClone((await classicCases()).find((run) => run.id === id))
+  );
 }
 
 export async function readCSV(file: File): Promise<Source> {
@@ -78,15 +74,17 @@ export async function browserApi<T>(
   path: string,
   options: RequestInit = {},
 ): Promise<T> {
-  await initialize();
   const method = options.method || 'GET';
   let result: unknown;
   if (method === 'GET' && path === '/session') result = session();
-  else if (method === 'GET' && path === '/runs')
-    result = (await listLocal<Run>('runs')).sort((a, b) =>
-      b.createdAt.localeCompare(a.createdAt),
-    );
-  else if (method === 'POST' && path === '/settings') {
+  else if (method === 'GET' && path === '/runs') {
+    const saved = await listLocal<Run>('runs');
+    const ids = new Set(saved.map((run) => run.id));
+    result = [
+      ...saved,
+      ...(await classicCases()).filter((run) => !ids.has(run.id)),
+    ].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  } else if (method === 'POST' && path === '/settings') {
     const settings = JSON.parse(String(options.body));
     const url = new URL(settings.baseURL);
     if (
@@ -111,10 +109,16 @@ export async function browserApi<T>(
     await writeLocal('sources', source.id, { source, file: options.body });
     result = source;
   } else if (method === 'GET' && /^\/runs\/[^/]+$/.test(path)) {
-    result = await readLocal<Run>('runs', path.split('/')[2]);
+    result = await readRun(path.split('/')[2]);
     if (!result) throw new Error('未找到这份分析记录');
+  } else if (method === 'DELETE' && /^\/runs\/[^/]+$/.test(path)) {
+    const id = path.split('/')[2];
+    const run = await readRun(id);
+    if (run?.caseStudy) throw new Error('经典案例不能删除');
+    await deleteLocal('runs', id);
+    result = { ok: true };
   } else if (method === 'POST' && /^\/runs\/[^/]+\/charts$/.test(path)) {
-    const run = await readLocal<Run>('runs', path.split('/')[2]);
+    const run = await readRun(path.split('/')[2]);
     if (!run) throw new Error('未找到这份分析记录');
     const { nodeId, x, y } = JSON.parse(String(options.body));
     const node = run.nodes.find(
@@ -130,6 +134,7 @@ export async function browserApi<T>(
       id: `chart-${crypto.randomUUID()}`,
       sequence: Math.max(...run.nodes.map((item) => item.sequence)) + 1,
       kind: 'chart',
+      stepId: node.stepId,
       title: `${y} · 按 ${x}`,
       status: 'succeeded',
       parents: [nodeId],

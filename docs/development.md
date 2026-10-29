@@ -2,32 +2,9 @@
 
 [返回项目介绍](../README.md)
 
-## 启动
+## 本地完整版本
 
-### 静态浏览器版本
-
-```sh
-npm run build:static
-npm run preview:static -- --host 127.0.0.1 --port 4318
-```
-
-静态产物位于 `dist-static/`，可单独部署到 Vercel 等静态托管服务；不需要运行 Node 后端，也不需要把本地 AVA 仓库上传到托管平台。开发时使用 `npm run dev:static`。当前依赖安装与构建仍在具备下述同级 AVA 仓库的本地环境完成。
-
-线上地址：https://ava-notebook.vercel.app 。更新发布时，构建后重新关联产物目录并上传：
-
-```sh
-npm run build:static
-vercel link --cwd dist-static --yes --project ava-notebook --scope yuxins-projects-e2c1f66b
-vercel deploy --cwd dist-static --prod --yes --scope yuxins-projects-e2c1f66b
-```
-
-界面沿用原版，内置两份基于仓库示例 CSV 的已完成案例。案例、上传的 CSV、问题草稿、SQL 修改和保存的图表存入 IndexedDB；模型设置与密钥仅保留在页面内存。支持回顾、Data / Chart、图谱和本地 JSON 导出，查询与分支重跑尚未接入。静态页面不请求 `/api` 或调用模型。
-
-网站数据按浏览器和站点地址隔离；清除网站数据会删除本地内容。线上发布只使用 `dist-static/`，其中不包含 `.env`、本机历史目录和模型输入原文。
-
-### 本地完整版本
-
-需要 Node.js 22.13+，以及包含本项目控制与 telemetry 扩展的本地 AVA 构建。两个仓库放在同级目录：
+需要 Node.js 22.13+，以及同级目录中已构建的 AVA：
 
 ```text
 Documents/
@@ -47,108 +24,108 @@ npm install
 npm run dev
 ```
 
-打开终端显示的地址，默认是 `http://127.0.0.1:4317`。
+默认地址为 `http://127.0.0.1:4317`。`@antv/ava` 链接到 `../AVA`；修改 AVA 后重新构建并重启 Notebook。
 
-在左下角「连接分析模型」填写 OpenAI 兼容的 Chat Completions 地址、模型名称和 API Key。界面提交的密钥仅存于本地服务进程，重启后失效。也可以创建本项目的 `.env`：
+左下角「连接分析模型」支持 OpenAI 兼容的 Chat Completions 地址、模型名称和 API Key。界面提交的密钥只保存在服务进程内，重启后失效。也可以复制 `.env.example` 为 `.env`，填写 `OPENAI_API_KEY`、`OPENAI_MODEL`、`OPENAI_BASE_URL`。不要提交 `.env`。
 
-```sh
-cp .env.example .env
-```
-
-填写 `OPENAI_API_KEY`、`OPENAI_MODEL`、`OPENAI_BASE_URL`。不要提交此文件。
-
-生产方式：
+生产运行：
 
 ```sh
 npm run build
 npm start
 ```
 
-`@antv/ava` 是 `file:../AVA` 符号链接。修改 AVA 后重新构建并重启 Notebook；旧构建或不同模型配置的检查点会拒绝恢复，可使用原 CSV 发起新分析。
+## 分析策略
 
-## 一期能力
+输入区可选择 Direct 快速分析或 Loop 深入分析。Direct 按「生成查询 → 执行 → 总结」运行，SQL 失败时自动修正。Loop 按模型返回的动作探索数据、修正方案、执行查询并核验结果，默认最多 12 轮，必要时由 AVA 执行最终查询。两种策略都支持停止；SQL、错误、结果和步骤文本实时保存。
 
-- **CSV 导入**：UTF-8、含唯一非空表头，最多 10 MB / 100,000 行。支持带引号的字段、换行和 UTF-8 BOM。导入时校验并保存数据快照。
-- **真实 loop**：复用 AVA 的 EXPLORE / REFINE / SQL / CONFIRM 策略，不在 Notebook 重写分析算法。
-- **事件取证**：AVA 的 `schemaend`、`profileend`、`loopstep`、`reasonstart/end`、`querystart/end` 驱动证据记录。控制回调仅用于等待、介入和保存恢复状态。
-- **Notebook 交互**：自动生成步骤、SQL、表格、结论；详细输入、Token 用量（若可用）和来源按需展开。证据图谱是同一记录的辅助视图。
-- **三种证据视图**：步骤和节点详情可切换 SQL / Data / Chart，沿记录中的来源关系关联查询和结果。一轮多查询或结论的多份依据可分别选择；无 SQL、尚未执行、空结果和无数值列都有明确提示。CSV 图表只使用标记过的预览数据。切换视图不执行查询，也不丢失 SQL 编辑草稿。
-- **执行控制**：连续分析、查询前暂停、逐步检查、暂停和停止。暂停等待当前操作结束；停止先取消，必要时结束执行进程。
-- **SQL 修改**：原稿与人工修改保留在记录中。修改后的实际 SQL 经 AVA 校验执行，并写入后续模型上下文。
-- **历史分支**：从具体模型轮次或查询前的检查点重跑，继承此前证据，不混入旧分支的后续结果。
-- **恢复与去重**：页面刷新通过 SSE 快照恢复；服务重启将活动任务标为中断，可从节点创建分支继续。执行命令具备请求 ID 去重与目标节点校验。
-- **结果图表**：对保存的结果选择分类列和数值列生成柱状图，保留来源引用。展示前 20 行，部分结果有明确标记。
-- **证据导出**：导出 JSON，包括事件、节点、输入输出和介入记录；不含 API Key。导出可能包含业务数据和模型上下文，请按其实际内容分享。
+界面按「分析问题 → 查询说明 → SQL 与结果 → 证据局限 → 分析结论 → 后续计划」组织笔记。查询完成后 SQL 默认折叠；运行中或失败的查询展开。每条查询都有独立结果，可切换 Data / Chart，并从详情保存柱状图。图谱展示同一份记录的来源关系。
 
-## 销售经营探索案例
+只接受新版 `context.eventId`、`stepId` 和 `parentStepIds` 事件结构，不解析旧 `context.operationId`、顶层 `id` 或 `parentIds`。步骤编号取自新版 `stepstart/stepend.data.step`，不作为身份标识。不提供暂停、单步、SQL 修改或检查点分支。旧格式记录与旧内置案例不迁移、不自动载入。
 
-首页「经典案例」从 SQLite 数据库中读取带 `caseStudy: { title, description }` 标记且已完成的记录。「回顾」直接打开对应 Notebook，展示持久化的步骤、SQL、结果和结论，不触发模型或查询。
-
-项目在 `data/classic-cases/` 中附带两份可共享的合成数据案例：「各地区销售额对比」和「2 月业绩下滑归因」。分析快照、CSV 和检查点都纳入版本管理；快照中的本机 CSV 路径使用占位符，初始化时绑定到当前数据目录。服务启动会将缺失案例导入 `.ava-notebook/notebook.sqlite` 的 `runs` 表，同时安装数据快照和检查点。其他人拉取项目并启动服务，即使没有历史数据或模型配置，也能看到两个案例并回顾详情。重复启动不会复制案例或覆盖已有记录；检查点重跑仍遵循构建和模型配置一致性校验。
-
-首页点击「探索销售经营案例」会一起载入以下根目录文件：
-
-- `sales-case.csv`：1,416 行合成销售数据，2025 年 1–2 月、4 个商品、3 个地区、2 个渠道，每天每个组合都有记录。
-- `sales-semantic.yaml`：AVA `Semantic` 结构，包含物理表映射、复合主键、字段口径、指标表达式、分析方向与证据边界。
-- `sales-question.txt`：判断 2 月下降是否仅由月份变短造成，逐层找出拖累可比日均贡献的组合，再核验折扣、退款、广告与缺货信号。
-
-案例不预写分析 SQL，也不在语义中提供答案。worker 在 `source → schema → semantic → profile` 后调用 AVA 原生 `loop`，由模型按实际结果决定下一步。模型配置仍使用本地设置或 `.env`。手动上传普通 CSV 不会自动套用此案例的语义。
-
-每次导入保存 CSV 和语义定义的独立快照及指纹；历史分支复用原始语义，不受根目录文件后续编辑影响。数据结构详情中可以查看实际送入 AVA 的业务口径与分析思路。
-
-Notebook 按 loop 轮次组织连续笔记：分析说明 → SQL 输入单元格 → 结果输出 → 本步结论。已完成的 SQL 默认收起，结果直接展示并可切换 Data / Chart；待执行、运行中、失败或有未运行修改的 SQL 自动展开。只规划或核验的轮次通过折叠区展示输入依据，不重复 SQL。待执行的查询可直接编辑，点击运行或按 Shift / Ctrl / ⌘ + Enter 执行，并在下一条查询前暂停；历史查询展开后可在原位修改，再创建新分支重跑。未运行的草稿会明确标注，结果仍归属于上次执行。模型的后续发现仅在引用本步结果时关联，并收进标注核验轮次的展开区；未形成业务结论时不显示占位结论。原始节点、查询检查点、SQL 修改和图谱保留。
-
-数据覆盖退款空值、零访问日、月份天数差异、正负贡献抵消，以及广告后经营贡献和净利润的区别。回归测试通过 AVA 执行语义指标表达式，与 `tests/fixtures/sales-expected.json` 的独立基准核对；交叉组合的变化必须加总回总体日均变化。
-
-需要重建合成案例时执行 `node scripts/generate-sales-case.mjs`，会覆盖三个案例文件和测试基准。
-
-## Telemetry 与控制边界
-
-AVA 扩展为可选能力，默认调用保持原有事件行为：
+### 事件字段
 
 ```ts
-const ava = new AVA({ llm, telemetry: true });
+const ava = new AVA({ llm });
 ava.on('*', (event) => collect(event));
-await ava.analyze(question, { strategy: { type: 'loop' } });
+await ava.analyze(question, {
+  strategy: { type: 'loop' }, // 或 direct，由输入区选择
+  maxRows: 200,
+  maxResultBytes: 1024 * 1024,
+});
 ```
 
-单独开启 telemetry 即可观察 loop，不需要控制器。`loopstep` 提供稳定的步骤标识、阶段和待执行查询；模型开始事件提供实际输入上下文。模型说明属于模型输出，不是独立核验的事实。
+| 用途 | 字段 |
+| --- | --- |
+| 唯一事件 ID 与配对 | `context.eventId`，同一操作为 `${pairId}:start` / `${pairId}:end` |
+| 同一步骤归组，包括查询修正 | `context.stepId` |
+| 步骤之间的依赖（可选） | `context.parentStepIds` |
+| 步骤开始与结束 | `stepstart` / `stepend`，事件 ID 为 `${stepId}:start` / `${stepId}:end` |
+| 步骤编号与最终尝试 | `data.step`、`data.finalAttempt` |
+| Loop 动作与模型文本 | `stepend.data.action`、`text`，支持 EXPLORE / REFINE / SQL / CONFIRM |
+| 分析问题、重试序号 | `translatestart.data.query`、`attempt` |
+| 生成与实际执行的语句 | `translateend.data.dsl`、`querystart.data.dsl` |
+| 结果、结构及截断信息 | `queryend.data` |
+| 总结引用的查询结果 | `summarizestart.data.queryId`，包含 `:end` 的查询结束事件 ID |
+| 查询说明 | `summarizeend.data.queryExplanation` |
+| 证据局限（可选） | `summarizeend.data.limitations` |
+| 分析结论 | `summarizeend.data.conclusion` |
+| 后续计划（可选） | `summarizeend.data.nextStep` |
+| Token 用量（可选） | 结束事件的 `data.usage` |
+| 失败 | 结束事件的 `data.error` |
 
-节点控制使用 loop 的可选 `control`：
+事件本身原样保存其 `context`。Notebook 以配对事件的 `pairId` 创建节点，以 `stepId` 归组。步骤事件形成独立步骤节点；Loop 同一步的多条查询分别连接到该步骤，无查询的修正和核验步骤也保留。后续步骤根据 `parentStepIds` 连接前序步骤的所有末端输出。同一步内 Direct 的翻译和查询按执行顺序关联；总结使用 `queryId` 精确连接完整查询结束事件 ID 对应的结果节点。
 
-```ts
-strategy: {
-  type: 'loop',
-  control: {
-    resumeFrom: savedCheckpoint,
-    signal,
-    onCheckpoint: persistCheckpoint,
-    beforeStep: awaitUserDecision,
-  },
-}
+`analyze()` 返回值用于保存最终结果及完成状态，节点关系和结论文本来自事件。Direct 的结论连接总结节点；Loop 的结论来自最后的 CONFIRM 步骤。若 Loop 在 SQL 步骤后结束，仍展示查询结果并标明未收到核验结论。失败时保留已有 SQL 和数据，不生成完成结论。结构化总结解析失败时，详情保留脱敏响应节选（最多 3000 字符）和结束原因；空响应明确标注。
+
+数据结构、语义和质量信息分别取自 `schema()`、`semantic()`、`profile()` 的返回值。生命周期事件只记录状态。Notebook 不依赖 telemetry、模型 prompt 或控制器来拼接分析记录。
+
+## 数据与运行边界
+
+- CSV：UTF-8、唯一非空表头，最多 10 MB / 100,000 行；支持引号、换行和 UTF-8 BOM。保存独立快照及指纹。
+- DuckDB：只读查询，默认 30 秒查询超时、512 MB 内存限制；结果最多 200 行 / 1 MiB，保留截断标记。
+- 运行：同一时间执行一个分析。模型调用不额外设置 Notebook 超时；停止会结束 worker。服务重启将未完成记录标为中断，可用同一 CSV 重新分析。
+- 持久化：`.ava-notebook/notebook.sqlite` 的 `direct_runs` 表保存新格式记录，使用事务与 WAL。CSV 和语义快照在同一数据目录中；备份时保留整个目录。旧 `runs` 表、旧 JSON 和检查点不参与加载。
+- 刷新恢复：SSE 提供快照和节点更新；创建与停止支持请求 ID 去重。保存失败会结束 worker。
+- 访问：仅监听回环地址，校验 Host、Origin 和会话 Cookie。密钥不写入证据导出。
+- 导出：JSON 包含事件、节点和输入输出，可能包含业务数据。分析上下文会发往配置的模型服务。
+
+## 销售案例数据
+
+首页「探索销售经营案例」导入 `sales-case.csv`、`sales-semantic.yaml` 和 `sales-question.txt`，提供 1,416 行合成销售数据、业务口径和分析问题。worker 在加载 CSV、结构、语义和质量统计后执行所选策略。普通 CSV 不会自动套用这份语义。
+
+数据覆盖退款空值、零访问日、月份天数差异、正负贡献抵消，以及广告后经营贡献和净利润的区别。案例文件不预写 SQL 或答案；问题较复杂时，direct 的单次查询可能无法覆盖所有分析要求，应结合返回的证据局限判断结果。
+
+重建案例数据：`node scripts/generate-sales-case.mjs`。会覆盖三个案例文件和测试基准。
+
+### 经典案例回顾
+
+首页预装「销售额高就更赚钱吗」（Direct 快速模式）、「各地区销售额对比」和「2 月业绩下滑归因」（Loop 探索模式）。快速案例用一次商品汇总查询比较销售额、利润、利润率及利润占比，SQL 与总结是基于查询结果编写的预设示例，不冒充真实模型调用；其余案例沿用预录模型回应。`data/classic-cases/recordings.json` 保存各案例的策略、回应、输入数据和说明；生成脚本让当前 AVA 实际执行 SQL，`src/data/cases.json` 保存完整新事件、节点和结论。服务首次启动导入尚不存在的案例及其 CSV 快照，重复启动不会覆盖已保存图表；案例与个人历史分开展示。
+
+重新生成案例：`node scripts/generate-classic-cases.mjs`，无需模型密钥。脚本按各案例声明的 Direct 或 Loop 策略执行，全部完成后才更新内置记录。它不读取旧事件或检查点，也不会在用户打开页面时调用模型。
+
+## 静态浏览器版本
+
+```sh
+npm run build:static
+npm run preview:static -- --host 127.0.0.1 --port 4318
 ```
 
-`onCheckpoint` 等待持久化；`beforeStep` 可以等待用户，返回修改的 `sql` 或补充的 `instruction`。控制器不会通过事件监听器拦截或改写 AVA 方法。完成阶段的补充要求应从前面的模型或查询节点分支。
+产物位于 `dist-static/`，开发使用 `npm run dev:static`。静态版本没有查询引擎，支持 CSV 导入、问题草稿及同一份新版经典案例回顾；不请求 `/api` 或调用模型。浏览器保存的图表覆盖记录保留在 `ava-notebook-direct` IndexedDB，内置案例按需加载。模型设置与密钥只保留在页面内存。
 
-达到轮次上限或最终尝试返回的结果会标记「验证尚未完成」，不会当作经过 CONFIRM 的答案。
+现有线上地址为 https://ava-notebook.vercel.app 。本地构建不会自动发布。发布命令：
 
-## 存储与运行边界
-
-运行数据保存在本项目 `.ava-notebook/`（可用 `NOTEBOOK_DATA_DIR` 更改），已加入 Git 忽略。任务保存在 `notebook.sqlite` 的 `runs` 表中，使用 SQLite 事务和 WAL 持久化；检查点和 CSV 继续保存为独立文件。启动时自动迁移旧 `runs/<id>/run.json`，保留原文件作为备份，不覆盖数据库中的新记录。备份或迁移部署时应保留整个数据目录；不要只复制正在运行的 SQLite 主文件而遗漏 WAL。保存失败会停止执行。密钥通过环境或进程内配置提供。分析时数据上下文会发往配置的模型服务。
-
-仅监听本机回环地址，并校验 Host、Origin 与会话 Cookie。首版同时执行一个分析；可以浏览所有历史任务。DuckDB 查询为只读，默认 30 秒查询超时、512 MB 内存限制；Notebook 不再限制单步进程的等待时长，可手动停止分析。
-
-查询结果最多返回 200 行 / 1 MiB，截断标记在记录中保留。需要整体统计时请使用聚合查询。重跑可能因模型或非确定性 SQL 得到不同结果；历史回放使用已保存产物。
-
-当前不支持 Python、远程数据库、多人协作或任意代码内核。图表是基于执行结果的手工映射柱状图，尚未接入自动图表推荐。
+```sh
+vercel link --cwd dist-static --yes --project ava-notebook --scope yuxins-projects-e2c1f66b
+vercel deploy --cwd dist-static --prod --yes --scope yuxins-projects-e2c1f66b
+```
 
 ## 验证
 
 ```sh
 npm run build
+npm run build:static
 npm test
 ```
 
-测试包含 CSV 边界校验、纯事件证据投影，以及真实 AVA / DuckDB 的端到端流程。端到端测试使用临时本地模型服务，覆盖查询修改、单轮多查询断点、命令去重、SSE 更新、历史分支、服务重启恢复和密钥不进入导出。
-
-AVA 仓库另有 loop 控制、telemetry 及既有策略的回归测试。
+测试覆盖新事件配对、步骤依赖、多查询探索、无查询修正、独立步骤状态、SQL 重试、总结引用、Loop 核验与最终尝试、失败、停止、图表和 SQLite 保存。端到端测试运行真实 AVA / DuckDB，使用临时本地模型服务，验证两种策略、SSE、导出、服务重启、语义快照和凭证脱敏，不访问真实模型服务。

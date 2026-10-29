@@ -1,57 +1,26 @@
-import { useState } from 'react';
+import { X, GitBranch } from 'lucide-react';
 import { DataTable } from './DataViews';
 import EvidenceViews from './EvidenceViews';
 import AnalysisText from './AnalysisText';
-import {
-  X,
-  GitBranch,
-  Play,
-  Copy,
-  Check,
-  ChevronDown,
-  FileCode2,
-} from 'lucide-react';
-import { kindLabels, statusLabels, isActive } from './types';
-import type { Evidence, Run, Mode } from './types';
-import { browserMode } from './api';
+import { kindLabels } from './types';
+import StatusIcon from './StatusIcon';
+import type { Evidence, Run } from './types';
+
 export default function Detail({
   node,
-  draft,
-  onEdit,
   run,
   busy,
   onClose,
-  onContinue,
-  onFork,
   onChart,
   onSelect,
 }: {
   node: Evidence;
-  draft: { sql?: string; instruction?: string };
-  onEdit: (value: { sql?: string; instruction?: string }) => void;
   run: Run;
   busy: boolean;
   onClose: () => void;
-  onContinue: (
-    decision: { sql?: string; instruction?: string },
-    mode?: Mode,
-  ) => void;
-  onFork: (
-    nodeId: string,
-    decision: { sql?: string; instruction?: string },
-  ) => void;
   onChart: (nodeId: string, x: string, y: string) => void;
   onSelect: (id: string) => void;
 }) {
-  const sql = draft.sql ?? node.payload.sql ?? '';
-  const instruction = draft.instruction ?? '';
-  const [copied, setCopied] = useState(false);
-  const waiting = run.status === 'paused' && run.activeNodeId === node.id;
-  const canEdit = waiting || (!isActive(run) && !!node.checkpoint);
-  const decision = {
-    ...(node.kind === 'query' && sql !== node.payload.sql ? { sql } : {}),
-    ...(instruction.trim() ? { instruction } : {}),
-  };
   return (
     <aside
       className="detail"
@@ -74,7 +43,7 @@ export default function Detail({
         <div className="detail-title">
           <h2>{node.title}</h2>
           <span className={`status status-${node.status}`}>
-            {statusLabels[node.status] || node.status}
+            <StatusIcon status={node.status} />
           </span>
         </div>
         <div className="detail-meta">
@@ -82,13 +51,20 @@ export default function Detail({
           {node.duration !== undefined && (
             <span>{(node.duration / 1000).toFixed(2)} 秒</span>
           )}
-          {node.inherited && <span>继承自原分支</span>}
         </div>
-        {waiting && <div className="notice pause-notice">等待执行</div>}
         {node.payload.error && (
           <div role="alert" className="notice error-notice">
             {node.payload.error.message}
           </div>
+        )}
+        {node.payload.error?.responseText !== undefined && (
+          <details>
+            <summary>模型返回（最多 3000 字符）</summary>
+            <pre>{node.payload.error.responseText || '（空响应）'}</pre>
+            {node.payload.error.finishReason && (
+              <p>结束原因：{node.payload.error.finishReason}</p>
+            )}
+          </details>
         )}
         {node.kind === 'source' && (
           <>
@@ -137,47 +113,44 @@ export default function Detail({
             </details>
           </>
         )}
-        {node.kind === 'reason' && (
+        {node.payload.query && <AnalysisText text={node.payload.query} />}
+        {node.kind === 'step' && node.payload.text && (
+          <AnalysisText text={node.payload.text} />
+        )}
+        {node.kind === 'conclusion' &&
+          run.strategy === 'loop' &&
+          !node.payload.conclusion && (
+            <p className="notice">查询已完成，本次未收到核验结论。</p>
+          )}
+        {node.payload.queryExplanation && (
           <>
-            {node.payload.text && (
-              <AnalysisText
-                text={node.payload.text.replace(/^\[.*?\]\s*/, '')}
-              />
-            )}
-            {node.payload.finalAttempt && (
-              <div className="notice">已达到轮次上限，本轮为最终尝试。</div>
-            )}
-            {node.payload.prompt && (
-              <details>
-                <summary>
-                  <FileCode2 size={14} /> 模型输入
-                </summary>
-                <pre>{node.payload.prompt}</pre>
-              </details>
-            )}
-            {node.payload.usage && (
-              <details>
-                <summary>Token 用量</summary>
-                <pre>{JSON.stringify(node.payload.usage, null, 2)}</pre>
-              </details>
-            )}
+            <h3>查询说明</h3>
+            <AnalysisText text={node.payload.queryExplanation} />
           </>
         )}
-        {node.kind === 'conclusion' && (
+        {node.payload.limitations && (
           <>
-            <div
-              className={`notice ${
-                node.payload.completionReason === 'confirmed'
-                  ? 'success-notice'
-                  : ''
-              }`}
-            >
-              {node.payload.completionReason === 'confirmed'
-                ? '已完成模型检查'
-                : '执行完成 · 尚未验证'}
-            </div>
-            <AnalysisText text={node.payload.text || '等待分析完成'} />
+            <h3>证据局限</h3>
+            <AnalysisText text={node.payload.limitations} />
           </>
+        )}
+        {node.payload.conclusion && (
+          <>
+            <h3>分析结论</h3>
+            <AnalysisText text={node.payload.conclusion} />
+          </>
+        )}
+        {node.payload.nextStep && (
+          <>
+            <h3>后续计划</h3>
+            <AnalysisText text={node.payload.nextStep} />
+          </>
+        )}
+        {node.payload.usage && (
+          <details>
+            <summary>Token 用量</summary>
+            <pre>{JSON.stringify(node.payload.usage, null, 2)}</pre>
+          </details>
         )}
         <EvidenceViews
           node={node}
@@ -185,51 +158,6 @@ export default function Detail({
           busy={busy}
           onSelect={onSelect}
           onChart={onChart}
-          sqlModified={node.kind === 'query' && sql !== node.payload.sql}
-          sqlPane={
-            node.kind === 'query' ? (
-              <>
-                <div className="section-label">
-                  <h3>
-                    {sql !== node.payload.sql
-                      ? '修改草稿 · 尚未执行'
-                      : waiting || node.status === 'ready'
-                      ? '待执行 SQL'
-                      : '实际执行 SQL'}
-                  </h3>
-                  <button
-                    className="icon-button"
-                    aria-label="复制 SQL"
-                    onClick={async () => {
-                      try {
-                        await navigator.clipboard.writeText(sql);
-                        setCopied(true);
-                        setTimeout(() => setCopied(false), 1500);
-                      } catch {
-                        setCopied(false);
-                      }
-                    }}
-                  >
-                    {copied ? <Check size={14} /> : <Copy size={14} />}
-                  </button>
-                </div>
-                <textarea
-                  className="code-editor mono"
-                  aria-label="SQL 编辑器"
-                  value={sql}
-                  onChange={(e) => onEdit({ sql: e.target.value })}
-                  readOnly={!canEdit}
-                  spellCheck={false}
-                />
-                {node.payload.originalSQL && (
-                  <details>
-                    <summary>原始 SQL</summary>
-                    <pre>{node.payload.originalSQL}</pre>
-                  </details>
-                )}
-              </>
-            ) : undefined
-          }
         />
         {node.parents.length > 0 && (
           <div className="evidence-links">
@@ -243,61 +171,7 @@ export default function Detail({
             ))}
           </div>
         )}
-        {node.payload.interventions?.length > 0 && (
-          <details>
-            <summary>人工介入记录</summary>
-            <pre>{JSON.stringify(node.payload.interventions, null, 2)}</pre>
-          </details>
-        )}
-        {canEdit && node.checkpoint && node.kind !== 'conclusion' && (
-          <label className="field">
-            补充要求
-            <textarea
-              value={instruction}
-              onChange={(e) => onEdit({ instruction: e.target.value })}
-              placeholder="例如：只分析线上渠道，并核对异常值。"
-              maxLength={8000}
-            />
-          </label>
-        )}
       </div>
-      {node.checkpoint && (
-        <div className="detail-footer">
-          {waiting ? (
-            <>
-              <button
-                className="button primary full"
-                disabled={busy || (node.kind === 'query' && !sql.trim())}
-                onClick={() => onContinue(decision)}
-              >
-                <Play size={14} />
-                {Object.keys(decision).length ? '应用修改并继续' : '继续执行'}
-              </button>
-              <button
-                className="button secondary full"
-                disabled={busy || (node.kind === 'query' && !sql.trim())}
-                onClick={() => onContinue(decision, 'step')}
-              >
-                执行单步 <ChevronDown size={14} />
-              </button>
-            </>
-          ) : (
-            <button
-              className="button secondary full"
-              disabled={
-                browserMode ||
-                busy ||
-                isActive(run) ||
-                (node.kind === 'query' && !sql.trim())
-              }
-              onClick={() => onFork(node.id, decision)}
-            >
-              <GitBranch size={15} />
-              新建分支并重跑
-            </button>
-          )}
-        </div>
-      )}
     </aside>
   );
 }

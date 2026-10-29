@@ -2,7 +2,7 @@ let database: Promise<IDBDatabase> | undefined;
 
 function openDatabase() {
   return (database ??= new Promise<IDBDatabase>((resolve, reject) => {
-    const request = indexedDB.open('ava-notebook', 1);
+    const request = indexedDB.open('ava-notebook-direct', 1);
     request.onupgradeneeded = () => {
       for (const name of ['runs', 'sources', 'drafts'])
         request.result.createObjectStore(name);
@@ -44,6 +44,17 @@ export async function writeLocal(store: string, key: string, value: unknown) {
     transaction.oncomplete = () => resolve();
     transaction.onabort = () =>
       reject(new Error('浏览器存储失败，请检查剩余空间。'));
+    transaction.onerror = () => reject(transaction.error);
+  });
+}
+
+export async function deleteLocal(store: string, key: string) {
+  const db = await openDatabase();
+  return new Promise<void>((resolve, reject) => {
+    const transaction = db.transaction(store, 'readwrite');
+    transaction.objectStore(store).delete(key);
+    transaction.oncomplete = () => resolve();
+    transaction.onabort = () => reject(new Error('删除失败，请重试。'));
     transaction.onerror = () => reject(transaction.error);
   });
 }

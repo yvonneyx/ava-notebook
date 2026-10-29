@@ -48,13 +48,7 @@ export function evidenceDatasets(run: Run, node: Evidence): EvidenceDataset[] {
     const rows = result?.payload.data as Record<string, unknown>[] | undefined;
     datasets.set(id, {
       id,
-      label:
-        prefix +
-        (query
-          ? `${query.step === undefined ? '' : `第 ${query.step + 1} 轮 · `}${
-              query.title
-            }`
-          : item.title),
+      label: prefix + (query ? query.title : item.title),
       query,
       result,
       rows,
@@ -68,16 +62,28 @@ export function evidenceDatasets(run: Run, node: Evidence): EvidenceDataset[] {
   }
   if (node.kind === 'query' || node.kind === 'result') {
     add(node);
-  } else if (node.kind === 'reason') {
+  } else if (node.kind === 'translate' || node.kind === 'step') {
     // The model's own queries and its direct input results have different provenance.
     run.nodes
-      .filter((item) => item.kind === 'query' && item.parents.includes(node.id))
+      .filter(
+        (item) =>
+          item.kind === 'query' &&
+          (node.kind === 'step'
+            ? item.stepId === node.stepId
+            : item.parents.includes(node.id)),
+      )
       .forEach((item) => add(item));
-    for (const id of node.parents) {
+    const pending = [...node.parents];
+    const seen = new Set<string>();
+    while (pending.length) {
+      const id = pending.shift()!;
+      if (seen.has(id)) continue;
+      seen.add(id);
       const parent = byId.get(id);
       if (parent?.kind === 'result') add(parent, '输入依据 · ');
+      else if (parent) pending.push(...parent.parents);
     }
-  } else if (node.kind === 'chart' || node.kind === 'conclusion') {
+  } else if (['chart', 'conclusion', 'summary'].includes(node.kind)) {
     const seen = new Set<string>();
     const pending = [...node.parents];
     const ancestors: Evidence[] = [];
@@ -89,7 +95,7 @@ export function evidenceDatasets(run: Run, node: Evidence): EvidenceDataset[] {
       if (!parent) continue;
       if (parent.kind === 'query' || parent.kind === 'result')
         ancestors.push(parent);
-      pending.push(...parent.parents);
+      else pending.push(...parent.parents);
     }
     // A saved chart belongs only to its result, not earlier results used to plan that query.
     const relevant =

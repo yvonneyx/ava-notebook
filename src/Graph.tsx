@@ -8,7 +8,6 @@ import {
   MarkerType,
 } from '@xyflow/react';
 import type { NodeProps, Node as FlowNode } from '@xyflow/react';
-import dagre from '@dagrejs/dagre';
 import {
   Database,
   ScanSearch,
@@ -16,17 +15,15 @@ import {
   Table2,
   CheckCircle2,
   ChartColumn,
-  LoaderCircle,
-  CirclePause,
-  CircleAlert,
 } from 'lucide-react';
 import { kindLabels, statusLabels } from './types';
+import StatusIcon from './StatusIcon';
 import type { Evidence } from './types';
+import { layoutGraph } from './graph-layout';
 import '@xyflow/react/dist/style.css';
 const icons: Record<string, typeof Database> = {
   source: Database,
   context: ScanSearch,
-  reason: ScanSearch,
   query: Braces,
   result: Table2,
   conclusion: CheckCircle2,
@@ -37,18 +34,15 @@ const Card = memo(
     data,
     selected,
   }: NodeProps<
-    FlowNode<{ evidence: Evidence; onSelect: (id: string) => void }>
+    FlowNode<{
+      evidence: Evidence;
+      onSelect: (id: string) => void;
+      stepNumber?: number;
+      childCount?: number;
+    }>
   >) => {
     const node = data.evidence;
     const Icon = icons[node.kind] || ScanSearch;
-    const Status =
-      node.status === 'running'
-        ? LoaderCircle
-        : node.status === 'paused'
-        ? CirclePause
-        : node.status === 'failed'
-        ? CircleAlert
-        : CheckCircle2;
     const excerpt =
       node.kind === 'query'
         ? node.payload.sql
@@ -59,11 +53,13 @@ const Card = memo(
         : node.kind === 'result'
         ? node.payload.schema?.map((c: any) => c.name).join(' · ')
         : node.kind === 'conclusion'
-        ? node.payload.completionReason === 'confirmed'
-          ? '已完成模型检查'
-          : '已执行，验证尚未完成'
-        : node.payload.action
-        ? node.payload.text?.replace(/^\[.*?\]\s*/, '').replace(/```\w*/g, '')
+        ? node.payload.conclusion || '查询已完成，未收到核验结论'
+        : node.kind === 'step'
+        ? node.payload.text || '等待模型响应'
+        : node.kind === 'translate'
+        ? node.payload.query
+        : node.kind === 'summary'
+        ? node.payload.conclusion || '正在解释查询结果'
         : node.kind === 'chart'
         ? `${node.payload.rows?.length || 0} 个分组`
         : node.kind === 'context'
@@ -73,7 +69,9 @@ const Card = memo(
       <div
         role="button"
         tabIndex={0}
-        aria-label={`${node.title}，${statusLabels[node.status]}`}
+        aria-label={`${data.stepNumber ? `步骤 ${data.stepNumber}：` : ''}${
+          node.title
+        }，${statusLabels[node.status]}`}
         onClick={() => data.onSelect(node.id)}
         onKeyDown={(event) => {
           if (event.key === 'Enter' || event.key === ' ') {
@@ -83,23 +81,34 @@ const Card = memo(
           }
         }}
         className={`evidence-node kind-${node.kind} ${
-          selected ? 'selected' : ''
-        } state-${node.status}`}
+          data.stepNumber ? 'step-subgraph' : ''
+        } ${selected ? 'selected' : ''} state-${node.status}`}
       >
         <Handle type="target" position={Position.Top} />
         <div className="node-eyebrow">
           <span>
             <Icon size={13} />
+            {data.stepNumber && (
+              <span className="mono">STEP {data.stepNumber}</span>
+            )}
             {kindLabels[node.kind]}
           </span>
-          <Status
-            size={13}
-            className={node.status === 'running' ? 'spin' : ''}
-          />
+          <span>
+            {data.childCount !== undefined && `${data.childCount} 个事件`}
+            <StatusIcon status={node.status} />
+          </span>
         </div>
         <strong>{node.title}</strong>
         <p className={node.kind === 'query' ? 'mono' : ''}>{excerpt}</p>
-        <Handle type="source" position={Position.Bottom} />
+        {!!data.childCount && (
+          <Handle
+            type="source"
+            id="events"
+            position={Position.Bottom}
+            className="step-events-handle"
+          />
+        )}
+        <Handle type="source" id="output" position={Position.Bottom} />
       </div>
     );
   },
@@ -109,99 +118,44 @@ export default function Graph({
   nodes,
   selected,
   onSelect,
-  collapsed,
 }: {
   nodes: Evidence[];
   selected?: string;
   onSelect: (id: string) => void;
-  collapsed: Set<number>;
 }) {
-  const visible = nodes.filter(
-    (n) =>
-      !(
-        n.step !== undefined &&
-        collapsed.has(n.step) &&
-        ['query', 'result'].includes(n.kind)
-      ),
+  const signature = JSON.stringify(
+    nodes.map(({ id, kind, stepId, sequence, parents }) => [
+      id, kind, stepId, sequence, parents,
+    ]),
   );
-  const signature = visible
-    .map((n) => `${n.id}:${n.parents.join(',')}`)
-    .join('|');
-  const positions = useMemo(() => {
-    const graph = new dagre.graphlib.Graph().setDefaultEdgeLabel(() => ({}));
-    graph.setGraph({
-      rankdir: 'TB',
-      nodesep: 28,
-      ranksep: 36,
-      marginx: 32,
-      marginy: 32,
-    });
-    const ids = new Set(visible.map((n) => n.id));
-    visible.forEach((n) => graph.setNode(n.id, { width: 248, height: 92 }));
-    visible.forEach((n) =>
-      n.parents.forEach((parent) => {
-        const original = nodes.find((candidate) => candidate.id === parent);
-        const actual = ids.has(parent)
-          ? parent
-          : original?.step !== undefined
-          ? `m-${original.step}`
-          : '';
-        if (actual && ids.has(actual) && actual !== n.id)
-          graph.setEdge(actual, n.id);
-      }),
-    );
-    dagre.layout(graph);
-    return new Map(
-      visible.map((n) => [
-        n.id,
-        { x: graph.node(n.id).x - 124, y: graph.node(n.id).y - 46 },
-      ]),
-    );
-  }, [signature]);
-  const ids = new Set(visible.map((n) => n.id));
-  const edges = visible.flatMap((n) =>
-    [
-      ...new Set(
-        n.parents.map((parent) => {
-          const original = nodes.find((candidate) => candidate.id === parent);
-          return ids.has(parent)
-            ? parent
-            : original?.step !== undefined
-            ? `m-${original.step}`
-            : '';
-        }),
-      ),
-    ]
-      .filter((id) => id && ids.has(id) && id !== n.id)
-      .map((parent) => ({
-        id: `${parent}-${n.id}`,
-        source: parent,
-        target: n.id,
-        type: 'smoothstep',
-        markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14 },
-        style: { stroke: '#b6cbd9', strokeWidth: 1.3 },
-      })),
-  );
+  const layout = useMemo(() => layoutGraph(nodes), [signature]);
+  const byId = new Map(nodes.map((node) => [node.id, node]));
   return (
     <ReactFlow
-      nodes={visible.map((node) => ({
-        id: node.id,
+      nodes={layout.nodes.map(({ stepNumber, childCount, ...node }) => ({
+        ...node,
         type: 'evidence',
-        width: 248,
-        height: 92,
-        position: positions.get(node.id) || { x: 0, y: 0 },
-        data: { evidence: node, onSelect },
+        extent: node.parentId ? 'parent' : undefined,
+        zIndex: stepNumber ? 0 : 2,
+        data: { evidence: byId.get(node.id)!, onSelect, stepNumber, childCount },
         selected: selected === node.id,
       }))}
-      edges={edges}
+      edges={layout.edges.map((edge) => ({
+        ...edge,
+        type: 'smoothstep',
+        zIndex: 1,
+        markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14 },
+        style: { stroke: '#9db8cb', strokeWidth: 1.3 },
+      }))}
       nodeTypes={nodeTypes}
+      zIndexMode="manual"
       nodesFocusable={false}
       onPaneClick={() => onSelect('')}
       nodesDraggable={false}
       nodesConnectable={false}
       fitView
       fitViewOptions={{ padding: 0.3, maxZoom: 0.95 }}
-      minZoom={0.2}
+      minZoom={0.1}
       maxZoom={1.5}
     >
       <Background color="#d9e7f0" gap={22} size={1} />

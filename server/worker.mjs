@@ -1,45 +1,22 @@
 import { createRequire } from 'node:module';
 import { rm } from 'node:fs/promises';
-const require = createRequire(import.meta.url);
-const { AVA } = require('@antv/ava');
-let nextId = 0;
-const pending = new Map();
-const abort = new AbortController();
+const { AVA } = createRequire(import.meta.url)('@antv/ava');
 const send = (message) =>
   new Promise((resolve, reject) =>
     process.send(message, (error) => (error ? reject(error) : resolve())),
   );
-const request = (type, state) =>
-  new Promise((resolve, reject) => {
-    const id = ++nextId;
-    pending.set(id, { resolve, reject });
-    send({ type, id, state }).catch(reject);
-  });
 process.on('message', (message) => {
-  if (message.type === 'reply') {
-    const callback = pending.get(message.id);
-    pending.delete(message.id);
-    if (message.error) callback?.reject(new Error(message.error));
-    else callback?.resolve(message.value);
-  } else if (message.type === 'cancel') {
-    abort.abort(new Error('用户停止了分析'));
-    for (const callback of pending.values())
-      callback.reject(abort.signal.reason);
-    pending.clear();
-  } else if (message.type === 'start') void execute(message);
+  if (message.type === 'start') void execute(message);
 });
 process.on('disconnect', () => process.exit(0));
-async function execute({ sourcePath, semantic, question, resume, scratch }) {
+
+async function execute({ sourcePath, semantic, question, strategy, scratch }) {
   const ava = new AVA({
-    telemetry: true,
     llm: {
       model: process.env.OPENAI_MODEL,
       apiKey: process.env.OPENAI_API_KEY,
       baseURL: process.env.OPENAI_BASE_URL || undefined,
       maxRetries: 1,
-      onQueryUsage: (usage) => {
-        void send({ type: 'usage', usage }).catch(() => {});
-      },
     },
     engine: {
       type: 'duckdb',
@@ -54,30 +31,35 @@ async function execute({ sourcePath, semantic, question, resume, scratch }) {
   });
   try {
     await ava.source({ type: 'csv-file', options: { path: sourcePath } });
-    await ava.schema();
-    if (semantic) await ava.semantic(undefined, () => semantic);
-    await ava.profile({ metrics: ['row_count', 'null_count'] });
+    await send({ type: 'context', data: { schema: await ava.schema() } });
+    if (semantic)
+      await send({
+        type: 'context',
+        data: { semantic: await ava.semantic(undefined, () => semantic) },
+      });
+    await send({
+      type: 'context',
+      data: {
+        profile: await ava.profile({ metrics: ['row_count', 'null_count'] }),
+      },
+    });
     const result = await ava.analyze(question, {
       maxRows: 200,
       maxResultBytes: 1024 * 1024,
-      strategy: {
-        type: 'loop',
-        maxSteps: 12,
-        control: {
-          resumeFrom: resume,
-          signal: abort.signal,
-          onCheckpoint: (state) => request('checkpoint', state),
-          beforeStep: (state) => request('ready', state),
-        },
-      },
+      strategy: { type: strategy },
     });
     await send({ type: 'done', result });
   } catch (error) {
     failed = true;
     await send({
       type: 'failed',
-      error: error.message,
-      cancelled: abort.signal.aborted,
+      error: {
+        name: error.name,
+        message: error.message,
+        ...(error.name === 'AI_NoObjectGeneratedError'
+          ? { text: error.text, finishReason: error.finishReason }
+          : {}),
+      },
     }).catch(() => {});
   } finally {
     await ava.dispose().catch(() => {});

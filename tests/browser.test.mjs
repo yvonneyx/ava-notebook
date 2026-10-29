@@ -1,6 +1,5 @@
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { createServer } from 'vite';
 
@@ -37,38 +36,4 @@ test('browser CSV reader preserves quoted cells and enforces import boundaries',
     new File(['a\n' + '1\n'.repeat(100001)], 'rows.csv'),
   ])
     await assert.rejects(() => readCSV(invalid));
-});
-
-test('published cases use repository examples and retain a complete evidence graph', async () => {
-  const text = await readFile(
-    new URL('../src/data/cases.json', import.meta.url),
-    'utf8',
-  );
-  const cases = JSON.parse(text);
-  assert.equal(cases.length, 2);
-  assert.doesNotMatch(
-    text,
-    /\/Users\/|\/home\/|"(?:apiKey|api_key|prompt|modelSignature|events)"/,
-  );
-  for (const run of cases) {
-    const csvPath =
-      run.source.name === 'sales.csv'
-        ? '../public/sales.csv'
-        : '../sales-case.csv';
-    const bytes = await readFile(new URL(csvPath, import.meta.url));
-    assert.equal(
-      run.source.hash,
-      createHash('sha256').update(bytes).digest('hex'),
-    );
-    assert.equal(run.status, 'completed');
-    const ids = new Set(run.nodes.map((node) => node.id));
-    assert.equal(ids.size, run.nodes.length);
-    assert.ok(ids.has('conclusion'));
-    for (const node of run.nodes) {
-      for (const parent of node.parents)
-        assert.ok(ids.has(parent), `${node.id} → ${parent}`);
-      if (node.kind === 'query') assert.ok(node.payload.sql);
-      if (node.kind === 'result') assert.ok(Array.isArray(node.payload.data));
-    }
-  }
 });

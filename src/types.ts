@@ -1,4 +1,3 @@
-export type Mode = 'auto' | 'query' | 'step';
 export type Source = {
   id: string;
   name: string;
@@ -21,10 +20,9 @@ export type Evidence = {
   status: string;
   parents: string[];
   payload: Record<string, any>;
-  step?: number;
-  checkpoint?: string;
+  stepId?: string;
+  parentStepIds?: string[];
   duration?: number;
-  inherited?: boolean;
 };
 export type Run = {
   id: string;
@@ -32,17 +30,21 @@ export type Run = {
   source: Source;
   status: string;
   revision: number;
-  mode: Mode;
+  strategy: 'direct' | 'loop';
   nodes: Evidence[];
   activeNodeId?: string;
   model: string;
-  parentId?: string;
   createdAt: string;
   updatedAt: string;
   error?: string;
   nodeCount?: number;
-  result?: { completionReason: string; text: string };
-  caseStudy?: { title: string; description: string };
+  result?: {
+    queryExplanation?: string;
+    limitations?: string;
+    conclusion?: string;
+    nextStep?: string;
+  };
+  caseStudy?: { title: string; description: string; recorded?: boolean };
 };
 export type Session = {
   configured: boolean;
@@ -54,8 +56,6 @@ export type Session = {
 export const statusLabels: Record<string, string> = {
   ready: '待执行',
   running: '执行中',
-  pausing: '等待暂停',
-  paused: '已暂停',
   succeeded: '已完成',
   completed: '已完成',
   failed: '失败',
@@ -63,13 +63,14 @@ export const statusLabels: Record<string, string> = {
   interrupted: '已中断',
 };
 export const kindLabels: Record<string, string> = {
+  step: '分析步骤',
   source: 'CSV 数据源',
   context: '数据结构',
-  reason: '模型分析',
+  translate: '生成查询',
+  summary: '解释与总结',
   query: 'SQL 执行',
   result: '查询结果',
   conclusion: '分析结论',
   chart: '结果图表',
 };
-export const isActive = (run?: Run | null) =>
-  !!run && ['running', 'paused', 'pausing'].includes(run.status);
+export const isActive = (run?: Run | null) => run?.status === 'running';

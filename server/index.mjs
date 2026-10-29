@@ -107,7 +107,6 @@ app.post('/api/sources', async (request) => {
   return createSource(request.body, name);
 });
 app.post('/api/examples/sales', async () => loadSalesExample());
-const mode = z.enum(['auto', 'query', 'step']);
 app.get('/api/runs', async () =>
   (await listRuns()).map((run) => runSummary(jobs.unsaved.get(run.id) || run)),
 );
@@ -117,7 +116,7 @@ app.post('/api/runs', async (request) =>
       .object({
         sourceId: z.string().uuid(),
         question: z.string().trim().min(1).max(8000),
-        mode: mode.default('auto'),
+        strategy: z.enum(['direct', 'loop']).default('direct'),
         requestId: z.string().uuid().optional(),
       })
       .strict()
@@ -127,6 +126,12 @@ app.post('/api/runs', async (request) =>
 );
 app.get('/api/runs/:id', async (request) =>
   publicRun(await jobs.get(request.params.id)),
+);
+app.delete('/api/runs/:id', async (request) =>
+  jobs.lock(async () => {
+    await jobs.remove(request.params.id);
+    return { ok: true };
+  }),
 );
 app.get('/api/runs/:id/export', async (request, reply) => {
   const run = await jobs.get(request.params.id);
@@ -145,34 +150,12 @@ app.post('/api/runs/:id/control', async (request) =>
   jobs.lock(async () => {
     const body = z
       .object({
-        command: z.enum(['pause', 'continue', 'stop', 'mode']),
-        mode: mode.optional(),
-        sql: z.string().trim().min(1).max(64000).optional(),
-        instruction: z.string().trim().max(8000).optional(),
-        revision: z.number().int().optional(),
+        command: z.literal('stop'),
         requestId: z.string().uuid().optional(),
-        nodeId: z.string().optional(),
       })
       .strict()
       .parse(request.body);
     return publicRun(await jobs.command(request.params.id, body));
-  }),
-);
-app.post('/api/runs/:id/fork', async (request) =>
-  jobs.lock(async () => {
-    const body = z
-      .object({
-        nodeId: z.string().regex(/^[a-zA-Z0-9-]+$/),
-        mode: mode.default('query'),
-        requestId: z.string().uuid().optional(),
-        sql: z.string().trim().min(1).max(64000).optional(),
-        instruction: z.string().trim().max(8000).optional(),
-      })
-      .strict()
-      .parse(request.body);
-    return publicRun(
-      await jobs.start({ ...body, parentId: request.params.id }),
-    );
   }),
 );
 app.post('/api/runs/:id/charts', async (request) =>
@@ -203,6 +186,7 @@ app.post('/api/runs/:id/charts', async (request) =>
       throw new Error('数值列必须包含有效数字');
     const node = putNode(run, `chart-${randomUUID()}`, {
       kind: 'chart',
+      stepId: source.stepId,
       title: `${body.y} · 按 ${body.x}`,
       status: 'succeeded',
       parents: [body.nodeId],

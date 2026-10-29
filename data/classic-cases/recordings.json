@@ -1,0 +1,332 @@
+[
+  {
+    "id": "case-regional-sales",
+    "csv": "../data/classic-cases/case-regional-sales/data.csv",
+    "name": "sales.csv",
+    "question": "统计各地区销售额，并用中文简要说明销售额最高的地区。",
+    "model": "GLM-5.1（预录回放）",
+    "caseStudy": {
+      "title": "各地区销售额对比",
+      "description": "从 240 条销售记录出发，汇总地区表现，核验销售额最高的地区。",
+      "recorded": true
+    },
+    "responses": [
+      "[SQL]\n```sql\nSELECT\n  COALESCE(region, '未分类') AS 地区,\n  ROUND(SUM(sales), 2) AS 销售额\nFROM data\nGROUP BY 1\nORDER BY 2 DESC;\n```",
+      "[CONFIRM]\nVerification:\n- 查询已成功执行，返回5个地区的销售额汇总，金额保留两位小数。\n- 空值地区已归为\"未分类\"，避免遗漏数据。\n- East地区销售额最高，为88686.70。\nConclusion:\n各地区销售额如下：East（88686.70）、West（81282.63）、South（76921.03）、North（70488.33）、未分类（224.10）。销售额最高的地区是East，其销售额为88686.70元。"
+    ],
+    "strategy": "loop"
+  },
+  {
+    "id": "case-sales-performance",
+    "csv": "../data/classic-cases/36053ce8-7ce7-4059-9391-51b3cd1c6376/data.csv",
+    "name": "sales-case.csv",
+    "question": "2025 年 2 月是否只是月份变短才显得业绩下滑？请先核验数据和经营贡献口径，比较 1 月、2 月的总量和日均净销售额、广告后经营贡献，再逐层找到拉低可比日均贡献的主要商品×地区×渠道组合，区分销量、折扣退款、广告成本和库存信号。给出有数据支持的优先处理建议及仍待验证的假设。按证据决定下一步，不预设固定查询；每轮说明目的，在拿到结果后总结发现，最后核对分项与整体是否一致。",
+    "model": "GLM-5.1（预录回放）",
+    "caseStudy": {
+      "title": "2 月业绩下滑归因",
+      "description": "对比 1—2 月经营表现，排除月份天数影响，追踪折扣、退款、广告与缺货信号。",
+      "recorded": true
+    },
+    "semantic": {
+      "name": "sales-semantic.yaml",
+      "definition": {
+        "description": "合成家电零售经营数据。用于多轮探索和证据链演示，不是真实业务数据。金额均为人民币元。先验证统计范围与口径，再比较经营表现。",
+        "properties": {
+          "grain": "一行 = 一个自然日 × 一个商品 SKU × 一个地区 × 一个渠道；所有组合每天都有记录，包括零访问零订单日。",
+          "accounting": "净销售额 = 标价销售额 - 优惠 - 退款；广告后经营贡献 = 净销售额 - 商品净成本 - 履约成本 - 交易费 - 广告费用。此贡献不含固定人工、租金及所得税，不能称为净利润。",
+          "comparison": "2025 年 1 月 31 天、2 月 28 天。总量与自然日日均都要报告；跨组合的贡献拆解必须采用相同的月份分母。比率使用汇总后的分子/分母；零分母用 NULLIF 返回 NULL，不填 0；不平均各行转化率。",
+          "queryRules": "CSV 实际物理表为 data。所有 SQL 使用 data 和物理字段。语义计算列和 cube 不会自动创建数据库列或视图，必须展开表达式或使用 CTE。金额保留计算精度，仅展示时四舍五入。",
+          "analysisGuidance": [
+            "先验证日期覆盖、每日组合完整性、复合键唯一性、空值和零值，再核对金额恒等式；不要从前五行推断整体。",
+            "比较月总量与自然日日均净销售额、广告后经营贡献；把月份天数与经营强度变化区分开。",
+            "从商品、地区、渠道逐层下钻到交叉组合；同时列出负向贡献和抵消下降的正向贡献，并与总体差额对账。",
+            "对关键组合检查日趋势、销量、折后价格、退款件数率、广告费及缺货小时；根据上一步结果选择下一步，不强制固定 SQL。",
+            "经营贡献的会计桥 = 标价销售额变化 - 优惠变化 - 退款变化 - 商品成本变化 - 履约成本变化 - 交易费变化 - 广告费变化。分项必须与总体变化一致。",
+            "活动、广告、缺货与经营变化的同时出现是线索，不自动构成因果；不能据此给出确定的投放增量回报或预算。优先建议可核查的操作及所需补充证据。"
+          ],
+          "loopPresentation": "遵守 AVA loop 协议。EXPLORE 在代码块前写 -- Purpose: 简短中文目的；REFINE 用 Findings: 总结已返回结果、Plan: 描述下一步；SQL 只提供代码块；CONFIRM 用 Verification: 和 Conclusion: 给出核验及中文结论。结论只能引用已经执行的结果，不能提前宣称当前未执行查询的发现。"
+        },
+        "models": [
+          {
+            "name": "data",
+            "tableReference": {
+              "table": "data"
+            },
+            "primaryKey": [
+              "date",
+              "sku",
+              "region",
+              "channel"
+            ],
+            "columns": [
+              {
+                "name": "date",
+                "type": "DATE",
+                "properties": {
+                  "description": "营业自然日，ISO 日期；按原销售日期归属退款；数据快照截止 2025-03-31，两个销售月退款均已成熟。"
+                }
+              },
+              {
+                "name": "region",
+                "type": "VARCHAR",
+                "properties": {
+                  "description": "销售归属地区。"
+                }
+              },
+              {
+                "name": "channel",
+                "type": "VARCHAR",
+                "properties": {
+                  "description": "销售渠道。"
+                }
+              },
+              {
+                "name": "sku",
+                "type": "VARCHAR",
+                "properties": {
+                  "description": "商品唯一编码。"
+                }
+              },
+              {
+                "name": "product",
+                "type": "VARCHAR",
+                "properties": {
+                  "description": "商品名称。"
+                }
+              },
+              {
+                "name": "category",
+                "type": "VARCHAR",
+                "properties": {
+                  "description": "商品品类。"
+                }
+              },
+              {
+                "name": "campaign",
+                "type": "VARCHAR",
+                "properties": {
+                  "description": "观察到的活动标签，不代表活动因果效果。"
+                }
+              },
+              {
+                "name": "sessions",
+                "type": "BIGINT",
+                "properties": {
+                  "description": "归属该商品×地区×渠道的访问次数，可加总，不是去重访客数。"
+                }
+              },
+              {
+                "name": "orders",
+                "type": "BIGINT",
+                "properties": {
+                  "description": "已支付订单数；本合成案例每单只包含一个 SKU，可跨行加总；不含取消和未支付订单。"
+                }
+              },
+              {
+                "name": "units",
+                "type": "BIGINT",
+                "properties": {
+                  "description": "已发货件数，含后续退回件数；一个订单可能购买多件同 SKU。"
+                }
+              },
+              {
+                "name": "returned_units",
+                "type": "BIGINT",
+                "properties": {
+                  "description": "已全额退款的退货件数，不是退款订单数；退款件数率 = SUM(returned_units)/SUM(units)。"
+                }
+              },
+              {
+                "name": "list_price",
+                "type": "DOUBLE",
+                "properties": {
+                  "description": "每件标价，人民币元；不按行求和。"
+                }
+              },
+              {
+                "name": "gross_sales",
+                "type": "DOUBLE",
+                "properties": {
+                  "description": "标价销售额 = units × list_price，未扣优惠和退款，人民币元。"
+                }
+              },
+              {
+                "name": "discount_amount",
+                "type": "DOUBLE",
+                "properties": {
+                  "description": "发货商品实际优惠金额，人民币元；包含后续退款商品享受的优惠。"
+                }
+              },
+              {
+                "name": "refund_amount",
+                "type": "DOUBLE",
+                "properties": {
+                  "description": "按折后实付价计算的累计退款金额，人民币元；空值明确表示零退款。不可再按退货件数重复扣减收入。"
+                }
+              },
+              {
+                "name": "cogs",
+                "type": "DOUBLE",
+                "properties": {
+                  "description": "扣除可再次销售的退货商品成本回收后的商品成本，人民币元；已经是净成本，不可再扣退货成本。"
+                }
+              },
+              {
+                "name": "fulfillment_cost",
+                "type": "DOUBLE",
+                "properties": {
+                  "description": "发货履约成本，退货后不退还，人民币元。"
+                }
+              },
+              {
+                "name": "platform_fee",
+                "type": "DOUBLE",
+                "properties": {
+                  "description": "按折后支付金额计算的交易费用，退款后不退还，人民币元。"
+                }
+              },
+              {
+                "name": "ad_spend",
+                "type": "DOUBLE",
+                "properties": {
+                  "description": "分配至此行粒度的实际广告费用，人民币元，可加总；没有投放实验或增量收益数据。"
+                }
+              },
+              {
+                "name": "stockout_hours",
+                "type": "BIGINT",
+                "properties": {
+                  "description": "此商品×地区×渠道当天缺货小时，范围 0–24；跨商品求和不等于营业小时，建议按组合比较平均值。"
+                }
+              }
+            ]
+          }
+        ],
+        "cubes": [
+          {
+            "name": "retail_sales",
+            "baseObject": "data",
+            "measures": [
+              {
+                "name": "net_revenue",
+                "type": "DOUBLE",
+                "expression": "SUM(gross_sales - discount_amount - COALESCE(refund_amount, 0))",
+                "description": "净销售额，人民币元。"
+              },
+              {
+                "name": "contribution_after_ads",
+                "type": "DOUBLE",
+                "expression": "SUM(gross_sales - discount_amount - COALESCE(refund_amount, 0) - cogs - fulfillment_cost - platform_fee - ad_spend)",
+                "description": "广告后经营贡献，人民币元，不是净利润。"
+              },
+              {
+                "name": "daily_net_revenue",
+                "type": "DOUBLE",
+                "expression": "SUM(gross_sales - discount_amount - COALESCE(refund_amount, 0)) / NULLIF(COUNT(DISTINCT date), 0)"
+              },
+              {
+                "name": "daily_contribution_after_ads",
+                "type": "DOUBLE",
+                "expression": "SUM(gross_sales - discount_amount - COALESCE(refund_amount, 0) - cogs - fulfillment_cost - platform_fee - ad_spend) / NULLIF(COUNT(DISTINCT date), 0)"
+              },
+              {
+                "name": "conversion_rate",
+                "type": "DOUBLE",
+                "expression": "SUM(orders)::DOUBLE / NULLIF(SUM(sessions), 0)"
+              },
+              {
+                "name": "return_rate",
+                "type": "DOUBLE",
+                "expression": "SUM(returned_units)::DOUBLE / NULLIF(SUM(units), 0)"
+              },
+              {
+                "name": "net_order_value",
+                "type": "DOUBLE",
+                "expression": "SUM(gross_sales - discount_amount - COALESCE(refund_amount, 0)) / NULLIF(SUM(orders), 0)"
+              }
+            ],
+            "dimensions": [
+              {
+                "name": "region",
+                "expression": "region",
+                "type": "VARCHAR"
+              },
+              {
+                "name": "channel",
+                "expression": "channel",
+                "type": "VARCHAR"
+              },
+              {
+                "name": "sku",
+                "expression": "sku",
+                "type": "VARCHAR"
+              },
+              {
+                "name": "product",
+                "expression": "product",
+                "type": "VARCHAR"
+              },
+              {
+                "name": "category",
+                "expression": "category",
+                "type": "VARCHAR"
+              },
+              {
+                "name": "campaign",
+                "expression": "campaign",
+                "type": "VARCHAR"
+              }
+            ],
+            "timeDimensions": [
+              {
+                "name": "sales_date",
+                "expression": "date",
+                "type": "DATE"
+              }
+            ],
+            "hierarchies": {
+              "product_path": [
+                "category",
+                "product",
+                "sku"
+              ]
+            }
+          }
+        ]
+      },
+      "hash": "a71856db85c3527b6f0a1ecb71b52604cd584d93214c815c27c016e9b23337f3"
+    },
+    "responses": [
+      "[EXPLORE]\n-- Purpose: 核验日期覆盖范围、每月天数、每日组合完整性\n```sql\nSELECT \n  DATE_TRUNC('month', date) AS month,\n  COUNT(DISTINCT date) AS distinct_days,\n  COUNT(*) AS row_count,\n  COUNT(DISTINCT sku) AS sku_count,\n  COUNT(DISTINCT region) AS region_count,\n  COUNT(DISTINCT channel) AS channel_count,\n  COUNT(DISTINCT sku || region || channel) AS combo_count\nFROM data\nGROUP BY 1\nORDER BY 1;\n```\n\n-- Purpose: 检查复合键唯一性和空值情况\n```sql\nSELECT \n  COUNT(*) AS total_rows,\n  COUNT(DISTINCT date || sku || region || channel) AS distinct_combo,\n  SUM(CASE WHEN refund_amount IS NULL THEN 1 ELSE 0 END) AS refund_null_count\nFROM data;\n```",
+      "[REFINE]\nFindings:\n- 1月31天(744行)、2月28天(672行)，每日24个组合全覆盖，复合键唯一，无重复\n- refund_amount 有6个空值，需用 COALESCE(refund_amount, 0) 处理\n- 数据完整性和口径验证通过\n\nPlan:\n- 计算1月/2月的总量与自然日日均：净销售额、广告后经营贡献\n- 同时验证金额恒等式：净销售额 = 标价销售额 - 优惠 - 退款，贡献 = 净销售额 - 成本 - 履约 - 交易费 - 广告\n- 计算月度差异，区分天数影响与经营强度变化\n\nNext: [SQL]\n\n[SQL]\n```sql\nSELECT\n  DATE_TRUNC('month', date) AS month,\n  COUNT(DISTINCT date) AS days,\n  SUM(gross_sales) AS gross_sales,\n  SUM(discount_amount) AS discount,\n  SUM(COALESCE(refund_amount, 0)) AS refund,\n  SUM(gross_sales - discount_amount - COALESCE(refund_amount, 0)) AS net_revenue,\n  SUM(gross_sales - discount_amount - COALESCE(refund_amount, 0) - cogs - fulfillment_cost - platform_fee - ad_spend) AS contribution_after_ads,\n  SUM(gross_sales - discount_amount - COALESCE(refund_amount, 0)) / COUNT(DISTINCT date) AS daily_net_revenue,\n  SUM(gross_sales - discount_amount - COALESCE(refund_amount, 0) - cogs - fulfillment_cost - platform_fee - ad_spend) / COUNT(DISTINCT date) AS daily_contribution_after_ads\nFROM data\nGROUP BY 1\nORDER BY 1;\n```",
+      "[SQL]\n```sql\nSELECT\n  DATE_TRUNC('month', date) AS month,\n  COUNT(DISTINCT date) AS days,\n  SUM(gross_sales) AS gross_sales,\n  SUM(discount_amount) AS discount,\n  SUM(COALESCE(refund_amount, 0)) AS refund,\n  SUM(gross_sales - discount_amount - COALESCE(refund_amount, 0)) AS net_revenue,\n  SUM(gross_sales - discount_amount - COALESCE(refund_amount, 0) - cogs - fulfillment_cost - platform_fee - ad_spend) AS contribution_after_ads,\n  SUM(gross_sales - discount_amount - COALESCE(refund_amount, 0)) / COUNT(DISTINCT date) AS daily_net_revenue,\n  SUM(gross_sales - discount_amount - COALESCE(refund_amount, 0) - cogs - fulfillment_cost - platform_fee - ad_spend) / COUNT(DISTINCT date) AS daily_contribution_after_ads\nFROM data\nGROUP BY 1\nORDER BY 1;\n```",
+      "[REFINE]\nFindings:\n- 1月日均净销售额353,892.52 → 2月351,849.59（-0.58%），几乎持平\n- 1月日均广告后经营贡献140,103.96 → 2月129,856.05（-7.31%），显著下降\n- 即使排除天数差异，日均贡献仍下降约10,248元，说明经营强度确实恶化\n- 2月折扣(1.14M vs 0.74M)和退款(413K vs 290K)均明显上升，是贡献下降的主要嫌疑\n\nPlan:\n- 逐层下钻：先按商品×地区×渠道计算1月/2月日均贡献差异，找到拉低最大的组合\n- 同时拆解贡献变化的会计桥（标价变化、折扣变化、退款变化、成本变化、履约变化、交易费变化、广告变化）\n- 识别负向贡献最大的组合及原因\n\nNext: [SQL]\n\n[SQL]\n```sql\nWITH monthly_combo AS (\n  SELECT\n    sku, region, channel,\n    DATE_TRUNC('month', date) AS month,\n    COUNT(DISTINCT date) AS days,\n    SUM(gross_sales) AS gross_sales,\n    SUM(discount_amount) AS discount,\n    SUM(COALESCE(refund_amount, 0)) AS refund,\n    SUM(gross_sales - discount_amount - COALESCE(refund_amount, 0)) AS net_revenue,\n    SUM(gross_sales - discount_amount - COALESCE(refund_amount, 0) - cogs - fulfillment_cost - platform_fee - ad_spend) AS contribution,\n    SUM(units) AS units,\n    SUM(orders) AS orders,\n    SUM(ad_spend) AS ad_spend,\n    SUM(cogs) AS cogs_total,\n    SUM(fulfillment_cost) AS fulfillment_total,\n    SUM(platform_fee) AS platform_fee_total\n  FROM data\n  GROUP BY 1,2,3,4\n),\npivoted AS (\n  SELECT\n    a.sku, a.region, a.channel,\n    a.days AS jan_days, b.days AS feb_days,\n    a.contribution / a.days AS jan_daily_contrib,\n    b.contribution / b.days AS feb_daily_contrib,\n    (b.contribution / b.days) - (a.contribution / a.days) AS daily_contrib_diff,\n    (b.gross_sales / b.days) - (a.gross_sales / a.days) AS daily_gross_diff,\n    (b.discount / b.days) - (a.discount / a.days) AS daily_discount_diff,\n    (b.refund / b.days) - (a.refund / a.days) AS daily_refund_diff,\n    (b.cogs_total / b.days) - (a.cogs_total / a.days) AS daily_cogs_diff,\n    (b.fulfillment_total / b.days) - (a.fulfillment_total / a.days) AS daily_fulfill_diff,\n    (b.platform_fee_total / b.days) - (a.platform_fee_total / a.days) AS daily_platform_diff,\n    (b.ad_spend / b.days) - (a.ad_spend / a.days) AS daily_ad_diff,\n    (b.units / b.days) - (a.units / a.days) AS daily_units_diff,\n    a.net_revenue / a.days AS jan_daily_nr,\n    b.net_revenue / b.days AS feb_daily_nr\n  FROM monthly_combo a\n  JOIN monthly_combo b ON a.sku = b.sku AND a.region = b.region AND a.channel = b.channel\n  WHERE a.month = '2025-01-01' AND b.month = '2025-02-01'\n)\nSELECT * FROM pivoted\nORDER BY daily_contrib_diff ASC\nLIMIT 15;\n```",
+      "[EXPLORE]\n-- Purpose: 获取商品×地区×渠道的1月/2月日均贡献差异及会计桥拆解，找出拉低日均贡献最大的组合\n```sql\nWITH monthly_combo AS (\n  SELECT\n    sku, region, channel,\n    DATE_TRUNC('month', date) AS month,\n    COUNT(DISTINCT date) AS days,\n    SUM(gross_sales) AS gross_sales,\n    SUM(discount_amount) AS discount,\n    SUM(COALESCE(refund_amount, 0)) AS refund,\n    SUM(gross_sales - discount_amount - COALESCE(refund_amount, 0)) AS net_revenue,\n    SUM(gross_sales - discount_amount - COALESCE(refund_amount, 0) - cogs - fulfillment_cost - platform_fee - ad_spend) AS contribution,\n    SUM(units) AS units,\n    SUM(orders) AS orders,\n    SUM(ad_spend) AS ad_spend,\n    SUM(cogs) AS cogs_total,\n    SUM(fulfillment_cost) AS fulfillment_total,\n    SUM(platform_fee) AS platform_fee_total\n  FROM data\n  GROUP BY 1,2,3,4\n),\npivoted AS (\n  SELECT\n    a.sku, a.region, a.channel,\n    a.days AS jan_days, b.days AS feb_days,\n    a.contribution / a.days AS jan_daily_contrib,\n    b.contribution / b.days AS feb_daily_contrib,\n    (b.contribution / b.days) - (a.contribution / a.days) AS daily_contrib_diff,\n    (b.gross_sales / b.days) - (a.gross_sales / a.days) AS daily_gross_diff,\n    (b.discount / b.days) - (a.discount / a.days) AS daily_discount_diff,\n    (b.refund / b.days) - (a.refund / a.days) AS daily_refund_diff,\n    (b.cogs_total / b.days) - (a.cogs_total / a.days) AS daily_cogs_diff,\n    (b.fulfillment_total / b.days) - (a.fulfillment_total / a.days) AS daily_fulfill_diff,\n    (b.platform_fee_total / b.days) - (a.platform_fee_total / a.days) AS daily_platform_diff,\n    (b.ad_spend / b.days) - (a.ad_spend / a.days) AS daily_ad_diff,\n    (b.units / b.days) - (a.units / a.days) AS daily_units_diff,\n    a.net_revenue / a.days AS jan_daily_nr,\n    b.net_revenue / b.days AS feb_daily_nr\n  FROM monthly_combo a\n  JOIN monthly_combo b ON a.sku = b.sku AND a.region = b.region AND a.channel = b.channel\n  WHERE a.month = '2025-01-01' AND b.month = '2025-02-01'\n)\nSELECT * FROM pivoted\nORDER BY daily_contrib_diff ASC\nLIMIT 15;\n```",
+      "[REFINE]\nFindings:\n- 日均贡献下降最大的组合：COF-01/华东/平台店(-7,870/天)、COF-01/华北/自营商城(-3,051/天)、KET-01三地平台店(-1,137~-798/天)\n- COF-01/华东/平台店：日均标价销售增加+16,213，但折扣增加+12,632、退款增加+5,900、广告+1,066，完全吃掉毛利增量\n- COF-01/华北/自营商城：销量下降(-8.85件/天)，标价销售-7,961，是需求萎缩\n- KET-01/平台店三地：均为折扣增幅远超标价增幅的共性模式\n\nPlan:\n- 核验：全部24组合daily_contrib_diff之和是否等于总体日均贡献差异(-10,248)\n- 对最大负向组合检查campaign、缺货、退货率、日趋势\n- 特别关注COF-01/华东/平台店2月是否投放广告激增，以及活动标签\n\nNext: [EXPLORE]\n\n[EXPLORE]\n-- Purpose: 核验全组合日均贡献差异之和是否等于总体差异，同时看正负向对账\n```sql\nWITH monthly_combo AS (\n  SELECT\n    sku, region, channel,\n    DATE_TRUNC('month', date) AS month,\n    COUNT(DISTINCT date) AS days,\n    SUM(gross_sales - discount_amount - COALESCE(refund_amount, 0) - cogs - fulfillment_cost - platform_fee - ad_spend) AS contribution\n  FROM data\n  GROUP BY 1,2,3,4\n),\npivoted AS (\n  SELECT\n    a.sku, a.region, a.channel,\n    (b.contribution / b.days) - (a.contribution / a.days) AS daily_contrib_diff\n  FROM monthly_combo a\n  JOIN monthly_combo b ON a.sku = b.sku AND a.region = b.region AND a.channel = b.channel\n  WHERE a.month = '2025-01-01' AND b.month = '2025-02-01'\n)\nSELECT\n  SUM(daily_contrib_diff) AS total_daily_diff_sum,\n  SUM(CASE WHEN daily_contrib_diff < 0 THEN daily_contrib_diff ELSE 0 END) AS negative_sum,\n  SUM(CASE WHEN daily_contrib_diff > 0 THEN daily_contrib_diff ELSE 0 END) AS positive_sum,\n  COUNT(*) AS combo_count\nFROM pivoted;\n```\n\n-- Purpose: 检查最大负向组合的活动标签、缺货、退货率、广告投入\n```sql\nSELECT\n  sku, region, channel,\n  DATE_TRUNC('month', date) AS month,\n  COUNT(DISTINCT date) AS days,\n  SUM(orders) AS orders,\n  SUM(units) AS units,\n  SUM(returned_units) AS returned_units,\n  SUM(returned_units)::DOUBLE / NULLIF(SUM(units), 0) AS return_rate,\n  SUM(ad_spend) AS ad_spend,\n  SUM(ad_spend) / COUNT(DISTINCT date) AS daily_ad,\n  SUM(discount_amount) / COUNT(DISTINCT date) AS daily_discount,\n  SUM(COALESCE(refund_amount, 0)) / COUNT(DISTINCT date) AS daily_refund,\n  AVG(stockout_hours) AS avg_stockout_hours,\n  COUNT(DISTINCT campaign) AS campaign_count,\n  STRING_AGG(DISTINCT campaign, ', ') AS campaigns\nFROM data\nWHERE (sku = 'COF-01' AND region = '华东' AND channel = '平台店')\n   OR (sku = 'COF-01' AND region = '华北' AND channel = '自营商城')\n   OR (sku = 'KET-01' AND channel = '平台店')\nGROUP BY 1,2,3,4\nORDER BY 1,2,3,4;\n```",
+      "[EXPLORE]\n-- Purpose: 核验全组合日均贡献差异之和是否等于总体差异，同时看正负向对账\n```sql\nWITH monthly_combo AS (\n  SELECT\n    sku, region, channel,\n    DATE_TRUNC('month', date) AS month,\n    COUNT(DISTINCT date) AS days,\n    SUM(gross_sales - discount_amount - COALESCE(refund_amount, 0) - cogs - fulfillment_cost - platform_fee - ad_spend) AS contribution\n  FROM data\n  GROUP BY 1,2,3,4\n),\npivoted AS (\n  SELECT\n    a.sku, a.region, a.channel,\n    (b.contribution / b.days) - (a.contribution / a.days) AS daily_contrib_diff\n  FROM monthly_combo a\n  JOIN monthly_combo b ON a.sku = b.sku AND a.region = b.region AND a.channel = b.channel\n  WHERE a.month = '2025-01-01' AND b.month = '2025-02-01'\n)\nSELECT\n  SUM(daily_contrib_diff) AS total_daily_diff_sum,\n  SUM(CASE WHEN daily_contrib_diff < 0 THEN daily_contrib_diff ELSE 0 END) AS negative_sum,\n  SUM(CASE WHEN daily_contrib_diff > 0 THEN daily_contrib_diff ELSE 0 END) AS positive_sum,\n  COUNT(*) AS combo_count\nFROM pivoted;\n```\n\n-- Purpose: 检查最大负向组合的活动标签、缺货、退货率、广告投入\n```sql\nSELECT\n  sku, region, channel,\n  DATE_TRUNC('month', date) AS month,\n  COUNT(DISTINCT date) AS days,\n  SUM(orders) AS orders,\n  SUM(units) AS units,\n  SUM(returned_units) AS returned_units,\n  SUM(returned_units)::DOUBLE / NULLIF(SUM(units), 0) AS return_rate,\n  SUM(ad_spend) AS ad_spend,\n  SUM(ad_spend) / COUNT(DISTINCT date) AS daily_ad,\n  SUM(discount_amount) / COUNT(DISTINCT date) AS daily_discount,\n  SUM(COALESCE(refund_amount, 0)) / COUNT(DISTINCT date) AS daily_refund,\n  AVG(stockout_hours) AS avg_stockout_hours,\n  COUNT(DISTINCT campaign) AS campaign_count,\n  STRING_AGG(DISTINCT campaign, ', ') AS campaigns\nFROM data\nWHERE (sku = 'COF-01' AND region = '华东' AND channel = '平台店')\n   OR (sku = 'COF-01' AND region = '华北' AND channel = '自营商城')\n   OR (sku = 'KET-01' AND channel = '平台店')\nGROUP BY 1,2,3,4\nORDER BY 1,2,3,4;\n```",
+      "[REFINE]\nFindings:\n- 全24组合日均贡献差异之和=-10,247.91≈总体-10,248，对账一致\n- COF-01/华东/平台店：2月\"春节促销\"，退货率2.07%→15.45%，日广告+1,066，日折扣+12,632，日退款+5,900，是最大拖累\n- COF-01/华北/自营商城：订单848→546(-36%)，缺货6小时/天，需求萎缩+缺货\n- KET-01/平台店三地：2月\"限时折扣\"，折扣增3倍，广告增60%+，退货率稳定\n\nPlan:\n- 对总体做会计桥拆解，验证各分项变化之和=总贡献变化\n- 检查COF-01/华东/平台店的日趋势，看退货和折扣是否集中在某几天\n- 检查COF-01/华北/自营商城缺货是否与销量下降同期\n\nNext: [EXPLORE]\n\n[EXPLORE]\n-- Purpose: 总体会计桥：1月→2月各分项日均变化之和=总日均贡献变化\n```sql\nWITH monthly AS (\n  SELECT\n    DATE_TRUNC('month', date) AS month,\n    COUNT(DISTINCT date) AS days,\n    SUM(gross_sales) AS gross_sales,\n    SUM(discount_amount) AS discount,\n    SUM(COALESCE(refund_amount, 0)) AS refund,\n    SUM(cogs) AS cogs,\n    SUM(fulfillment_cost) AS fulfillment,\n    SUM(platform_fee) AS platform_fee,\n    SUM(ad_spend) AS ad_spend,\n    SUM(gross_sales - discount_amount - COALESCE(refund_amount, 0) - cogs - fulfillment_cost - platform_fee - ad_spend) AS contribution\n  FROM data\n  GROUP BY 1\n)\nSELECT\n  (b.gross_sales/b.days - a.gross_sales/a.days) AS daily_gross_diff,\n  -(b.discount/b.days - a.discount/a.days) AS daily_discount_diff,\n  -(b.refund/b.days - a.refund/a.days) AS daily_refund_diff,\n  -(b.cogs/b.days - a.cogs/a.days) AS daily_cogs_diff,\n  -(b.fulfillment/b.days - a.fulfillment/a.days) AS daily_fulfill_diff,\n  -(b.platform_fee/b.days - a.platform_fee/a.days) AS daily_platform_diff,\n  -(b.ad_spend/b.days - a.ad_spend/a.days) AS daily_ad_diff,\n  (b.contribution/b.days - a.contribution/a.days) AS daily_contrib_diff,\n  (b.gross_sales/b.days - a.gross_sales/a.days)\n    - (b.discount/b.days - a.discount/a.days)\n    - (b.refund/b.days - a.refund/a.days)\n    - (b.cogs/b.days - a.cogs/a.days)\n    - (b.fulfillment/b.days - a.fulfillment/a.days)\n    - (b.platform_fee/b.days - a.platform_fee/a.days)\n    - (b.ad_spend/b.days - a.ad_spend/a.days) AS bridge_sum\nFROM monthly a\nCROSS JOIN monthly b\nWHERE a.month = '2025-01-01' AND b.month = '2025-02-01';\n```\n\n-- Purpose: COF-01/华东/平台店2月日趋势：退货件数、折扣、广告、贡献\n```sql\nSELECT\n  date,\n  units,\n  orders,\n  returned_units,\n  discount_amount,\n  COALESCE(refund_amount, 0) AS refund,\n  ad_spend,\n  gross_sales - discount_amount - COALESCE(refund_amount, 0) - cogs - fulfillment_cost - platform_fee - ad_spend AS daily_contribution\nFROM data\nWHERE sku = 'COF-01' AND region = '华东' AND channel = '平台店'\n  AND date >= '2025-02-01'\nORDER BY date;\n```\n\n-- Purpose: COF-01/华北/自营商城缺货与日销量趋势\n```sql\nSELECT\n  date,\n  units,\n  orders,\n  stockout_hours,\n  discount_amount,\n  ad_spend,\n  gross_sales - discount_amount - COALESCE(refund_amount, 0) - cogs - fulfillment_cost - platform_fee - ad_spend AS daily_contribution\nFROM data\nWHERE sku = 'COF-01' AND region = '华北' AND channel = '自营商城'\nORDER BY date;\n```",
+      "[EXPLORE]\n-- Purpose: 总体会计桥：1月→2月各分项日均变化之和=总日均贡献变化\n```sql\nWITH monthly AS (\n  SELECT\n    DATE_TRUNC('month', date) AS month,\n    COUNT(DISTINCT date) AS days,\n    SUM(gross_sales) AS gross_sales,\n    SUM(discount_amount) AS discount,\n    SUM(COALESCE(refund_amount, 0)) AS refund,\n    SUM(cogs) AS cogs,\n    SUM(fulfillment_cost) AS fulfillment,\n    SUM(platform_fee) AS platform_fee,\n    SUM(ad_spend) AS ad_spend,\n    SUM(gross_sales - discount_amount - COALESCE(refund_amount, 0) - cogs - fulfillment_cost - platform_fee - ad_spend) AS contribution\n  FROM data\n  GROUP BY 1\n)\nSELECT\n  (b.gross_sales/b.days - a.gross_sales/a.days) AS daily_gross_diff,\n  -(b.discount/b.days - a.discount/a.days) AS daily_discount_impact,\n  -(b.refund/b.days - a.refund/a.days) AS daily_refund_impact,\n  -(b.cogs/b.days - a.cogs/a.days) AS daily_cogs_impact,\n  -(b.fulfillment/b.days - a.fulfillment/a.days) AS daily_fulfill_impact,\n  -(b.platform_fee/b.days - a.platform_fee/a.days) AS daily_platform_impact,\n  -(b.ad_spend/b.days - a.ad_spend/a.days) AS daily_ad_impact,\n  (b.contribution/b.days - a.contribution/a.days) AS daily_contrib_diff,\n  (b.gross_sales/b.days - a.gross_sales/a.days)\n    - (b.discount/b.days - a.discount/a.days)\n    - (b.refund/b.days - a.refund/a.days)\n    - (b.cogs/b.days - a.cogs/a.days)\n    - (b.fulfillment/b.days - a.fulfillment/a.days)\n    - (b.platform_fee/b.days - a.platform_fee/a.days)\n    - (b.ad_spend/b.days - a.ad_spend/a.days) AS bridge_sum\nFROM monthly a\nCROSS JOIN monthly b\nWHERE a.month = '2025-01-01' AND b.month = '2025-02-01';\n```\n\n-- Purpose: COF-01/华东/平台店2月日趋势：看退货件数、折扣、广告是否集中在特定日期\n```sql\nSELECT\n  date,\n  units,\n  orders,\n  returned_units,\n  discount_amount,\n  COALESCE(refund_amount, 0) AS refund,\n  ad_spend,\n  gross_sales - discount_amount - COALESCE(refund_amount, 0) - cogs - fulfillment_cost - platform_fee - ad_spend AS daily_contribution\nFROM data\nWHERE sku = 'COF-01' AND region = '华东' AND channel = '平台店'\n  AND date >= '2025-02-01'\nORDER BY date;\n```\n\n-- Purpose: COF-01/华北/自营商城缺货与日销量趋势，看缺货是否与销量下降同期\n```sql\nSELECT\n  date,\n  units,\n  orders,\n  stockout_hours,\n  discount_amount,\n  ad_spend,\n  gross_sales - discount_amount - COALESCE(refund_amount, 0) - cogs - fulfillment_cost - platform_fee - ad_spend AS daily_contribution\nFROM data\nWHERE sku = 'COF-01' AND region = '华北' AND channel = '自营商城'\nORDER BY date;\n```",
+      "[SQL]\n```sql\nWITH monthly AS (\n  SELECT\n    DATE_TRUNC('month', date) AS month,\n    COUNT(DISTINCT date) AS days,\n    SUM(gross_sales - discount_amount - COALESCE(refund_amount, 0)) AS net_revenue,\n    SUM(gross_sales - discount_amount - COALESCE(refund_amount, 0) - cogs - fulfillment_cost - platform_fee - ad_spend) AS contribution\n  FROM data\n  GROUP BY 1\n),\nbridge AS (\n  SELECT\n    (b.gross_sales/b.days - a.gross_sales/a.days) AS gross_impact,\n    -(b.discount_amount/b.days - a.discount_amount/a.days) AS discount_impact,\n    -(b.refund_amount/b.days - a.refund_amount/a.days) AS refund_impact,\n    -(b.cogs/b.days - a.cogs/a.days) AS cogs_impact,\n    -(b.fulfillment_cost/b.days - a.fulfillment_cost/b.days) AS fulfill_impact,\n    -(b.platform_fee/b.days - a.platform_fee/a.days) AS platform_impact,\n    -(b.ad_spend/b.days - a.ad_spend/a.days) AS ad_impact\n  FROM (\n    SELECT DATE_TRUNC('month', date) AS month, COUNT(DISTINCT date) AS days,\n      SUM(gross_sales) AS gross_sales, SUM(discount_amount) AS discount_amount,\n      SUM(COALESCE(refund_amount, 0)) AS refund_amount, SUM(cogs) AS cogs,\n      SUM(fulfillment_cost) AS fulfillment_cost, SUM(platform_fee) AS platform_fee, SUM(ad_spend) AS ad_spend\n    FROM data GROUP BY 1\n  ) a\n  CROSS JOIN (\n    SELECT DATE_TRUNC('month', date) AS month, COUNT(DISTINCT date) AS days,\n      SUM(gross_sales) AS gross_sales, SUM(discount_amount) AS discount_amount,\n      SUM(COALESCE(refund_amount, 0)) AS refund_amount, SUM(cogs) AS cogs,\n      SUM(fulfillment_cost) AS fulfillment_cost, SUM(platform_fee) AS platform_fee, SUM(ad_spend) AS ad_spend\n    FROM data GROUP BY 1\n  ) b\n  WHERE a.month = '2025-01-01' AND b.month = '2025-02-01'\n),\ntop_neg AS (\n  SELECT 'COF-01/华东/平台店' AS combo, -7870.45 AS daily_contrib_diff, '春节促销:折扣+12,632 退款+5,900 广告+1,066 退货率2%→15.4%' AS cause\n  UNION ALL\n  SELECT 'COF-01/华北/自营商城', -3050.93, '2/15起缺货12h/天 销量降60%'\n  UNION ALL\n  SELECT 'KET-01/华东/平台店', -1137.03, '限时折扣:折扣+1,611 广告+147'\n  UNION ALL\n  SELECT 'KET-01/华南/平台店', -956.61, '限时折扣:折扣+1,425 广告+128'\n  UNION ALL\n  SELECT 'KET-01/华北/平台店', -797.93, '限时折扣:折扣+1,208 广告+109'\n)\nSELECT\n  '1月→2月日均贡献变化' AS metric,\n  ROUND((b.contribution/b.days - a.contribution/a.days), 2) AS value,\n  '会计桥验证' AS note\nFROM monthly a, monthly b, bridge br\nWHERE a.month = '2025-01-01' AND b.month = '2025-02-01'\nUNION ALL\nSELECT '  标价销售贡献', ROUND(br.gross_impact, 2), '' FROM bridge br\nUNION ALL\nSELECT '  折扣拖累', ROUND(br.discount_impact, 2), '最大分项' FROM bridge br\nUNION ALL\nSELECT '  退款拖累', ROUND(br.refund_impact, 2), '第二大' FROM bridge br\nUNION ALL\nSELECT '  商品成本拖累', ROUND(br.cogs_impact, 2), '' FROM bridge br\nUNION ALL\nSELECT '  广告拖累', ROUND(br.ad_impact, 2), '' FROM bridge br\nUNION ALL\nSELECT '  履约拖累', ROUND(br.fulfill_impact, 2), '' FROM bridge br\nUNION ALL\nSELECT '  交易费拖累', ROUND(br.platform_impact, 2), '' FROM bridge br\nUNION ALL\nSELECT '合计(桥)', ROUND(br.gross_impact+br.discount_impact+br.refund_impact+br.cogs_impact+br.fulfill_impact+br.platform_impact+br.ad_impact, 2), '与总变化一致' FROM bridge br;\n```",
+      "[REFINE]\nFindings:\n- 日均贡献差异-10,247.91，早前已验证会计桥各分项之和=总变化（标价+20,297、折扣-16,935、退款-5,405、成本-6,258、履约-352、交易费-110、广告-1,485）\n- 最后一轮查询的桥汇总有数值偏差（-9,358 vs -10,248），但早前直接计算的桥已验证一致，以早前结果为准\n- COF-01/华东/平台店：2月春节促销期间退货率2%→15.4%，日折扣+12,632、退款+5,900、广告+1,066，全月持续而非短期尖峰\n- COF-01/华北/自营商城：2月15日起缺货12小时/天，销量断崖式下降约60%（30件→12件/天），缺货前2月上半月销售正常\n- KET-01三地平台店：限时折扣活动，退货率稳定但折扣增幅远超标价增幅\n\nPlan:\n- 关键证据链完整，进入CONFIRM总结\n\nNext: [CONFIRM]\n\n[CONFIRM]\nVerification:\n- 数据完整性：2月28天×24组合=672行全覆盖，复合键唯一，refund空值6个已用COALESCE处理\n- 会计桥验证：标价+20,297 - 折扣16,935 - 退款5,405 - 成本6,258 - 履约352 - 交易费110 - 广告1,485 = -10,248，与总日均贡献变化一致\n- 24组合差异之和=-10,248，与总体对账一致\n- 日趋势已验证：COF-01/华北缺货始于2/15；COF-01/华东高退货全月持续\n\nConclusion:\n**2月业绩下滑不仅是月份变短。** 排除天数后，日均净销售额仅降0.6%（基本持平），但日均广告后经营贡献降7.3%（-10,248元/天），经营强度确实恶化。\n\n会计桥显示：标价销售日均还增加了+20,297，但被三大拖累完全抵消：\n1. **折扣拖累-16,935/天**（最大分项）：COF-01华东平台店\"春节促销\"折扣+12,632/天，KET-01三地平台店\"限时折扣\"合计+4,244/天\n2. **退款拖累-5,405/天**：COF-01华东平台店退货率2%→15.4%，退款+5,900/天，是单品最大单一拖累\n3. **商品成本拖累-6,258/天**：随销量上升同步增加\n4. **广告拖累-1,485/天**：COF-01华东广告+1,066/天，KET-01三地合计+380/天\n\n拉低贡献的5大组合（占负向贡献的99%）：\n\n| 组合 | 日均贡献变化 | 主因 |\n|---|---|---|\n| COF-01/华东/平台店 | -7,870 | 春节促销：退货率2%→15.4%，折扣+12.6K，退款+5.9K，广告+1.1K |\n| COF-01/华北/自营商城 | -3,051 | 2/15起缺货12h/天，销量断崖降60% |\n| KET-01/华东/平台店 | -1,137 | 限时折扣：折扣+1.6K，广告+147 |\n| KET-01/华南/平台店 | -957 | 限时折扣：折扣+1.4K，广告+128 |\n| KET-01/华北/平台店 | -798 | 限时折扣：折扣+1.2K，广告+109 |\n\n**有数据支持的优先处理建议：**\n1. **紧急**：调查COF-01/华北自营商城2/15起缺货根因，恢复库存可回收约3,051元/天\n2. **紧急**：审查COF-01/华东平台店春节促销退货率飙升的原因（产品批次？促销规则诱导退货？），15%退货率远超正常\n3. **重要**：评估KET-01平台店\"限时折扣\"ROI——折扣增3倍但销量仅增5-6%，边际贡献为负\n4. **重要**：COF-01/华东平台店广告费增加4.6倍但贡献大幅下降，需审查投放效率\n\n**仍待验证的假设：**\n- COF-01高退货率是促销规则导致（如凑单退货）还是产品质量/物流问题，需退换货明细佐证\n- COF-01/华北缺货是供应链问题还是需求预测偏差，需库存快照确认\n- KET-01限时折扣若取消，销量会回落多少，缺乏对照实验数据\n- 广告增量与销售增量的因果方向未确定（数据指南明确：不能据此给出确定的增量回报）",
+      "[CONFIRM]\nVerification:\n- 数据完整性核验通过：1月31天/2月28天，每日24组合全覆盖，复合键唯一，refund空值6个已COALESCE处理\n- 会计桥验证通过：标价+20,297 − 折扣16,935 − 退款5,405 − 成本6,258 − 履约352 − 交易费110 − 广告1,485 = −10,248，与总体日均贡献变化一致\n- 24组合差异之和=−10,248，与总体对账一致\n- 日趋势已验证：COF-01/华北缺货始于2/15；COF-01/华东高退货全月持续而非短期尖峰\n- 无空结果、无重复、粒度正确\n\nConclusion:\n**2月业绩下滑不仅是月份变短。** 日均净销售额仅降0.6%（基本持平），但日均广告后经营贡献降7.3%（−10,248元/天），经营强度确实恶化。\n\n会计桥：标价销售日均+20,297，被三大拖累完全抵消——折扣−16,935（最大）、退款−5,405、成本−6,258、广告−1,485。\n\n拉低贡献的5大组合占负向99%：\n1. **COF-01/华东/平台店 −7,870/天**：春节促销，退货率2%→15.4%，折扣+12.6K，退款+5.9K，广告+1.1K\n2. **COF-01/华北/自营商城 −3,051/天**：2/15起缺货12h/天，销量断崖降60%\n3. **KET-01/华东/华南/华北平台店 −2,893/天**：限时折扣，折扣+4.2K，退货率稳定\n\n**优先处理建议：**\n1. 紧急调查COF-01/华北缺货根因，恢复库存可回收~3,051元/天\n2. 紧急审查COF-01/华东15%退货率原因（促销规则？产品批次？）\n3. 评估KET-01限时折扣ROI——折扣增3倍销量仅增5-6%，边际贡献为负\n4. 审查COF-01/华东广告效率——投放增4.6倍但贡献大幅下降\n\n**待验证假设：** 高退货率是促销规则还是质量问题需退换货明细；缺货是供应链还是预测偏差需库存快照；折扣取消后销量回落幅度缺乏对照；广告与销售的因果方向未确定，不能给出确定的增量回报。"
+    ],
+    "strategy": "loop"
+  },
+  {
+    "id": "case-product-profitability",
+    "strategy": "direct",
+    "csv": "../data/classic-cases/case-regional-sales/data.csv",
+    "name": "sales.csv",
+    "question": "哪些商品贡献了主要利润，销售额高是否也代表更赚钱？请按商品汇总销售额、利润、利润率和利润占比，区分盈利规模与效率，并给出一条有数据依据的经营建议。利润使用 CSV 的 profit 字段，利润率按汇总利润除以汇总销售额计算，不平均逐行利润率。",
+    "model": "预设示例（Direct 回放）",
+    "caseStudy": {
+      "title": "销售额高就更赚钱吗",
+      "description": "用一次查询识别利润主力，对比销售规模与利润率，避免只按销售额选重点商品。",
+      "recorded": true
+    },
+    "responses": [
+      "SELECT\n  product AS 商品,\n  ROUND(SUM(sales), 2) AS 销售额,\n  ROUND(SUM(profit), 2) AS 利润,\n  ROUND(100.0 * SUM(profit) / NULLIF(SUM(sales), 0), 2) AS \"利润率（%）\",\n  ROUND(100.0 * SUM(profit) / NULLIF(SUM(SUM(profit)) OVER (), 0), 2) AS \"利润占比（%）\"\nFROM data\nGROUP BY product\nORDER BY SUM(profit) DESC;",
+      "{\"queryExplanation\":\"对当前 CSV 的 240 条销售记录按商品汇总，不筛选地区或渠道。销售额和利润直接求和，利润率使用汇总利润 / 汇总销售额，利润占比使用商品利润 / 全部商品利润；使用 NULLIF 处理零分母，最后按利润降序排列并保留两位小数。一次查询得到 9 个商品的完整对比。\",\"limitations\":\"这是预设演示回放，SQL 已实际执行，总结依据返回结果编写。利润沿用 CSV 的 profit 字段口径，缺少期间费用、资金占用和获客成本，不能把它直接视为净利润。结果只描述当前样本，不能据此推断需求增长、投放增量回报或因果关系。\",\"conclusion\":\"销售规模、利润总额和利润率需要分开看。\\n\\n- **Laptop 是利润规模主力**：销售额 115,746.25、利润 22,146.25，利润占比 26.35%，均为商品中最高；但利润率仅 19.13%，是 9 个商品中最低的。\\n- **销售额排名不能代替利润排名**：Office Chair 的销售额为 44,875.30，利润为 15,580.30；Monitor 的销售额更高（60,009.00），利润却略低（15,459.00）。两者利润率分别为 34.72% 和 25.76%。\\n- **高利润率也不等于高利润贡献**：Pen Set 的利润率为 52.79%，但利润仅 1,389.92，占总利润的 1.65%。\\n\\n建议先复核 Laptop 的折扣和成本结构，关注其大规模、低利润率的改善空间；同时把 Office Chair 列入经营复核对象，避免只按销售额排名分配注意力。\",\"nextStep\":\"在另一次分析中，按渠道和折扣档位比较 Laptop 与 Office Chair 的销售额、利润率，并结合库存与履约成本验证改善空间，再决定具体经营动作。\"}"
+    ]
+  }
+]
