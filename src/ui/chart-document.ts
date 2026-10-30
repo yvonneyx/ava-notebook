@@ -23,6 +23,7 @@ try {
   chart.render(JSON.parse(${JSON.stringify(json)}));
   // Offscreen iframes may not paint before the load timeout.
   report();
+  requestAnimationFrame(() => requestAnimationFrame(() => parent.postMessage({chart: '${nonce}', ready: true}, '*')));
   addEventListener('pagehide', () => chart.destroy());
 } catch { report(true); }
 </script></body></html>`;

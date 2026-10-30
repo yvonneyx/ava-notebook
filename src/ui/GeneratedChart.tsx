@@ -8,7 +8,11 @@ export default function GeneratedChart({
   config: { type: string; [key: string]: unknown };
 }) {
   const frame = useRef<HTMLIFrameElement>(null);
-  const [error, setError] = useState('');
+  const [status, setStatus] = useState<{
+    nonce: string;
+    error?: string;
+    ready?: boolean;
+  }>();
   const document = useMemo(() => {
     const nonce = crypto.randomUUID();
     return {
@@ -17,9 +21,9 @@ export default function GeneratedChart({
     };
   }, [config]);
   useEffect(() => {
-    setError('');
     const timeout = setTimeout(
-      () => setError('图表组件加载超时，请重新打开 Chart 视图'),
+      () =>
+        setStatus({ nonce: document.nonce, error: '图表组件加载超时，请重新打开 Chart 视图' }),
       15000,
     );
     const receive = (event: MessageEvent) => {
@@ -28,8 +32,14 @@ export default function GeneratedChart({
         event.data?.chart !== document.nonce
       )
         return;
-      clearTimeout(timeout);
-      if (event.data.error) setError(event.data.error);
+      if (event.data.error) {
+        clearTimeout(timeout);
+        setStatus({ nonce: document.nonce, error: event.data.error });
+      } else if (event.data.ready) {
+        setStatus({ nonce: document.nonce, ready: true });
+      } else {
+        clearTimeout(timeout);
+      }
     };
     window.addEventListener('message', receive);
     return () => {
@@ -37,17 +47,25 @@ export default function GeneratedChart({
       window.removeEventListener('message', receive);
     };
   }, [document]);
-  return error ? (
+  const current = status?.nonce === document.nonce ? status : undefined;
+  return current?.error ? (
     <p className="view-empty" role="alert">
-      {error}
+      {current.error}
     </p>
   ) : (
-    <iframe
-      ref={frame}
-      className="generated-chart"
-      title="自动生成的图表"
-      sandbox="allow-scripts"
-      srcDoc={document.html}
-    />
+    <div className="generated-chart-container">
+      {!current?.ready && (
+        <p className="generated-chart-loading" role="status">
+          正在加载图表…
+        </p>
+      )}
+      <iframe
+        ref={frame}
+        className="generated-chart"
+        title="自动生成的图表"
+        sandbox="allow-scripts"
+        srcDoc={document.html}
+      />
+    </div>
   );
 }

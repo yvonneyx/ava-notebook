@@ -132,3 +132,19 @@ test('updated classic case preserves old personal charts in history and shows th
   expect(stored[0].caseStudy).toBeUndefined();
   expect(stored[0].nodes).toEqual(old.nodes);
 });
+
+test('chart shows a loading state while its renderer downloads', async ({ page }) => {
+  let release;
+  const rendererReady = new Promise((resolve) => { release = resolve; });
+  await page.route('**/assets/index.min-*.js', async (route) => {
+    await rendererReady;
+    await route.continue();
+  });
+  await page.goto(`/?run=${cases[0].id}`, { waitUntil: 'domcontentloaded' });
+  const cell = page.locator('.generated-chart-container').first();
+  await cell.scrollIntoViewIfNeeded();
+  await expect(cell.getByRole('status')).toHaveText('正在加载图表…');
+  release();
+  await expect(cell.getByRole('status')).toHaveCount(0);
+  await expect(cell.locator('iframe').contentFrame().locator('canvas, table').first()).toBeVisible();
+});

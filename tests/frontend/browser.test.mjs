@@ -61,6 +61,7 @@ test('chart JSON stays inert and reports initialization even when offscreen pain
   assert.match(html, /default-src 'none'/);
   let rendered;
   const messages = [];
+  const frames = [];
   const context = createContext({
     GPTVis: {
       GPTVis: class {
@@ -72,7 +73,7 @@ test('chart JSON stays inert and reports initialization even when offscreen pain
     },
     parent: { postMessage: (message) => messages.push(message) },
     addEventListener() {},
-    requestAnimationFrame() {},
+    requestAnimationFrame(callback) { frames.push(callback); },
   });
   for (const [, script] of html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g))
     if (script.trim()) runInContext(script, context);
@@ -81,4 +82,8 @@ test('chart JSON stays inert and reports initialization even when offscreen pain
   assert.equal(messages.length, 1);
   assert.equal(messages[0].chart, 'test-nonce');
   assert.equal(messages[0].error, undefined);
+  frames.shift()();
+  frames.shift()();
+  assert.equal(messages[1].ready, true);
+  assert.equal(messages[1].chart, 'test-nonce');
 });

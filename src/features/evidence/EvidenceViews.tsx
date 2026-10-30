@@ -1,4 +1,6 @@
-import { lazy, Suspense, useId, useState } from 'react';
+import { lazy, Suspense, useEffect, useId, useState } from 'react';
+import { preload } from 'react-dom';
+import chartScript from '@antv/gpt-vis/dist/umd/index.min.js?url';
 import { Table2, ChartColumn, ArrowUpRight } from 'lucide-react';
 import type { Evidence, Run } from '../../../shared/contracts';
 import StatusLabel from '../../ui/StatusLabel';
@@ -138,6 +140,12 @@ export default function EvidenceViews({
   const dataset = datasets.find((item) => item.id === datasetId) || datasets[0];
   const query = dataset?.query;
   const visualization = dataset?.result?.visualization;
+  useEffect(() => {
+    if (visualization?.status === 'pending' || visualization?.status === 'ready') {
+      preload(chartScript, { as: 'script' });
+      void import('../../ui/GeneratedChart').catch(() => {});
+    }
+  }, [visualization?.status]);
   const pending = query
     ? query.status === 'failed'
       ? '查询失败，尚无结果数据'

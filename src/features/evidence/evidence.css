@@ -270,6 +270,21 @@
   color: #616d77;
 }
 
+.generated-chart-container {
+  position: relative;
+}
+.generated-chart-loading {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  border-radius: 10px;
+  background: #f7fafc;
+  color: #5e6e79;
+  font-size: 11px;
+}
 .generated-chart {
   display: block;
   width: 100%;
