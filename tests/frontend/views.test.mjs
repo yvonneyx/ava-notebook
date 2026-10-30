@@ -615,6 +615,12 @@ test('direct layout retains long questions and pending steps without showing a p
     nodes: [{ ...quick.nodes[0], status: 'running' }],
   };
   const pendingHtml = render(Notebook, { run: pending, onSelect: noop });
-  assert.match(pendingHtml, /正在生成查询/);
+  assert.doesNotMatch(pendingHtml, /正在生成查询/);
+  assert.match(pendingHtml, /AVA 正在续写分析笔记/);
   assert.doesNotMatch(pendingHtml, /class="direct-answer"|销售总额为 10/);
+  const runningHtml = render(Notebook, {
+    run: { ...quick, status: 'running' },
+    onSelect: noop,
+  });
+  assert.match(runningHtml, /AVA 正在续写分析笔记/);
 });

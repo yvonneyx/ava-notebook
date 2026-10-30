@@ -202,9 +202,9 @@ export default function Notebook({ run, selected, onSelect }: NotebookProps) {
                     outputOnly
                   />
                 ))}
-              {direct && !queries.length && (
+              {direct && !queries.length && !isActive(run) && (
                 <p className="cell-output-empty">
-                  {isActive(run) ? '正在生成查询…' : '本次分析未生成查询结果。'}
+                  本次分析未生成查询结果。
                 </p>
               )}
             </>
