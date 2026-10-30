@@ -48,7 +48,7 @@ test('browser CSV reader preserves quoted cells and enforces import boundaries',
     await assert.rejects(() => readCSV(invalid));
 });
 
-test('chart JSON remains inert script data and preserves prototype-like column names', () => {
+test('chart JSON stays inert and reports initialization even when offscreen painting is suspended', () => {
   const config = JSON.parse(
     '{"type":"table","data":[{"__proto__":{"value":1},"note":"</script><img src=x onerror=alert(1)>"}]}',
   );
@@ -60,6 +60,7 @@ test('chart JSON remains inert script data and preserves prototype-like column n
   assert.ok(!html.includes('</script><img'));
   assert.match(html, /default-src 'none'/);
   let rendered;
+  const messages = [];
   const context = createContext({
     GPTVis: {
       GPTVis: class {
@@ -69,12 +70,15 @@ test('chart JSON remains inert script data and preserves prototype-like column n
         destroy() {}
       },
     },
-    parent: { postMessage() {} },
+    parent: { postMessage: (message) => messages.push(message) },
     addEventListener() {},
-    requestAnimationFrame: (callback) => callback(),
+    requestAnimationFrame() {},
   });
   for (const [, script] of html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g))
     if (script.trim()) runInContext(script, context);
   assert.equal(JSON.stringify(rendered), JSON.stringify(config));
   assert.ok(Object.hasOwn(rendered.data[0], '__proto__'));
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].chart, 'test-nonce');
+  assert.equal(messages[0].error, undefined);
 });

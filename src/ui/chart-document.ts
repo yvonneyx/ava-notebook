@@ -21,7 +21,8 @@ addEventListener('unhandledrejection', () => report(true));
 try {
   const chart = new GPTVis.GPTVis({container: '#chart', height: 350});
   chart.render(JSON.parse(${JSON.stringify(json)}));
-  requestAnimationFrame(() => report());
+  // Offscreen iframes may not paint before the load timeout.
+  report();
   addEventListener('pagehide', () => chart.destroy());
 } catch { report(true); }
 </script></body></html>`;
