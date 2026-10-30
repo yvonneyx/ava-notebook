@@ -23,6 +23,13 @@ import { chartPreview, evidenceDatasets } from '../domain/evidence';
 let model = '';
 let baseURL = 'https://api.openai.com/v1';
 let apiKey = '';
+async function loadSettings() {
+  const saved = await readLocal<{ model: string; baseURL: string; apiKey: string }>(
+    'drafts',
+    'model-settings',
+  );
+  if (saved) ({ model, baseURL, apiKey } = saved);
+}
 const session = (): Session => ({
   model,
   baseURL,
@@ -91,6 +98,7 @@ async function handleBrowserApi<T>(
   const method = options.method || 'GET';
   let result: unknown;
   if (method === 'GET' && path === '/session') {
+    await loadSettings();
     await recoverRuns();
     result = session();
   } else if (method === 'GET' && path === '/runs') {
@@ -103,6 +111,7 @@ async function handleBrowserApi<T>(
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
       .map(runSummary);
   } else if (method === 'POST' && path === '/runs') {
+    await loadSettings();
     result = await startBrowserRun(JSON.parse(String(options.body)), {
       model,
       baseURL,
@@ -125,9 +134,14 @@ async function handleBrowserApi<T>(
     )
       throw new Error('模型地址须为不含凭证或查询参数的 HTTP(S) URL');
     if (!settings.model?.trim()) throw new Error('请填写模型名称');
-    model = settings.model.trim();
-    baseURL = settings.baseURL;
-    if (settings.apiKey) apiKey = settings.apiKey;
+    await loadSettings();
+    const next = {
+      model: settings.model.trim(),
+      baseURL: settings.baseURL,
+      apiKey: settings.apiKey || apiKey,
+    };
+    await writeLocal('drafts', 'model-settings', next);
+    ({ model, baseURL, apiKey } = next);
     result = session();
   } else if (
     method === 'POST' &&

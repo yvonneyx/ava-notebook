@@ -91,7 +91,7 @@ export default function ModelSettingsDialog({
           />
         </label>
         <div className="notice">
-          本次配置仅在当前页面打开期间生效。
+          配置和 API Key 保存在当前浏览器的网站数据中，清除网站数据后需重新配置。
         </div>
         <button className="button primary full" disabled={busy} type="submit">
           {busy ? (

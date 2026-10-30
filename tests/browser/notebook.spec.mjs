@@ -321,10 +321,17 @@ test('production Notebook runs direct with retry, generates a chart, renders gra
   expect((await currentRecord(page, 'completed')).nodes).toEqual(saved.nodes);
   await page.getByRole('button', { name: '配置分析模型', exact: true }).click();
   await expect(page.getByLabel('API Key', { exact: true })).toHaveValue('');
-  await expect(page.getByLabel('模型名称', { exact: true })).toHaveValue('');
-  expect(await records(page, 'sources')).toHaveLength(1);
-  expect(JSON.stringify(await records(page, 'drafts'))).not.toContain(
-    'browser-test-key',
+  await expect(page.getByLabel('模型名称', { exact: true })).toHaveValue('test-model');
+  await expect(page.getByLabel('API Key', { exact: true })).toHaveAttribute(
+    'placeholder', '已配置，留空保持当前密钥',
+  );
+  await page.getByLabel('模型名称', { exact: true }).fill('updated-model');
+  await page.getByRole('button', { name: '保存配置', exact: true }).click();
+  await page.reload();
+  await page.getByRole('button', { name: '配置分析模型', exact: true }).click();
+  await expect(page.getByLabel('模型名称', { exact: true })).toHaveValue('updated-model');
+  await expect(page.getByLabel('API Key', { exact: true })).toHaveAttribute(
+    'placeholder', '已配置，留空保持当前密钥',
   );
   expect(page.url()).toBe(url);
   expect(apiCalls).toEqual([]);
