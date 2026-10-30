@@ -25,7 +25,11 @@ for (const run of cases) {
       const cell = page.locator(
         `[id=${JSON.stringify('step-' + result.parents[0])}]`,
       );
-      await cell.getByRole('tab', { name: 'Chart', exact: true }).click();
+      const chartTab = cell.getByRole('tab', { name: 'Chart', exact: true });
+      const dataTab = cell.getByRole('tab', { name: 'Data', exact: true });
+      await chartTab.scrollIntoViewIfNeeded();
+      await expect(cell.getByRole('tab')).toHaveCount(2);
+      await expect(chartTab).toHaveAttribute('aria-selected', 'true');
       expect(['ready', 'empty']).toContain(result.visualization?.status);
       if (result.visualization.status === 'ready') {
         const chart = cell.frameLocator('iframe[title="自动生成的图表"]');
@@ -36,9 +40,31 @@ for (const run of cases) {
           cell.getByText('这份结果不需要图表，可在 Data 查看'),
         ).toBeVisible();
       }
+      await dataTab.click();
+      await expect(cell.getByRole('tabpanel').getByRole('table')).toBeVisible();
+      await expect(dataTab).toHaveAttribute('aria-selected', 'true');
+      await dataTab.press('ArrowRight');
+      await expect(chartTab).toBeFocused();
+      await expect(chartTab).toHaveAttribute('aria-selected', 'true');
     }
+    await page
+      .getByRole('button', { name: /查看查询 \d+ 的详情/ })
+      .first()
+      .click();
+    const detail = page.getByRole('complementary', { name: '节点详情' });
+    await expect(detail.getByRole('tab')).toHaveCount(2);
+    await expect(
+      detail.getByRole('tab', { name: 'Chart', exact: true }),
+    ).toHaveAttribute('aria-selected', 'true');
+    await detail.getByText('查看 SQL', { exact: true }).click();
+    await expect(detail.locator('.language-sql')).toBeVisible();
+    await detail.getByRole('tab', { name: 'Data', exact: true }).click();
+    await expect(detail.getByRole('tabpanel').getByRole('table')).toBeVisible();
     await page.reload();
     await expect(page.locator('.notebook-paper')).toBeVisible();
+    await expect(
+      page.getByRole('tab', { name: 'Chart', exact: true }).first(),
+    ).toHaveAttribute('aria-selected', 'true');
     await page.getByRole('button', { name: '图谱', exact: true }).click();
     await expect(page.locator('.react-flow')).toBeVisible();
     expect(calls).toEqual([]);

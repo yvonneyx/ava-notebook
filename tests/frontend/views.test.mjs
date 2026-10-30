@@ -178,7 +178,7 @@ test('notebook, evidence and Markdown SQL blocks share highlighting', () => {
   assert.match(plain, /<code>SELECT<\/code>/);
 });
 
-test('three views follow exact query/result edges, including multiple queries and conclusion ancestors', () => {
+test('evidence views follow exact query/result edges, including multiple queries and conclusion ancestors', () => {
   for (const node of [q0, r0]) {
     const [data] = evidenceDatasets(run, node);
     assert.equal(data.query.id, 'q0');
@@ -296,7 +296,7 @@ test('chart preview retains signed values, rejects invalid values, limits rows a
   );
 });
 
-test('every evidence kind exposes accessible tabs while retaining source, waiting and empty states', () => {
+test('every evidence kind defaults to Chart with two accessible tabs and retains source and empty states', () => {
   const chart = {
     id: 'chart',
     kind: 'chart',
@@ -314,8 +314,9 @@ test('every evidence kind exposes accessible tabs while retaining source, waitin
     chart,
   ]) {
     const html = render(EvidenceViews, { node, run, onSelect: noop });
-    assert.equal((html.match(/role="tab"/g) || []).length, 3);
+    assert.equal((html.match(/role="tab"/g) || []).length, 2);
     assert.equal((html.match(/aria-selected="true"/g) || []).length, 1);
+    assert.match(html, /id="[^"]+-chart"[^>]+aria-selected="true"/);
     assert.match(html, /role="tabpanel"/);
   }
   const sourceHtml = render(EvidenceViews, {
@@ -331,7 +332,7 @@ test('every evidence kind exposes accessible tabs while retaining source, waitin
       run: { ...run, nodes: [q0, empty] },
       onSelect: noop,
     }),
-    /无匹配结果/,
+    /没有结果行可供绘图/,
   );
   assert.match(
     render(EvidenceViews, { node: model0, run, onSelect: noop }),

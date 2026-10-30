@@ -1,5 +1,5 @@
 import { lazy, Suspense, useId, useState } from 'react';
-import { Braces, Table2, ChartColumn, ArrowUpRight } from 'lucide-react';
+import { Table2, ChartColumn, ArrowUpRight } from 'lucide-react';
 import type { Evidence, Run } from '../../../shared/contracts';
 import StatusLabel from '../../ui/StatusLabel';
 import { DataTable } from '../../ui/DataTable';
@@ -14,9 +14,8 @@ import type { EvidenceDataset } from '../../domain/evidence';
 
 const GeneratedChart = lazy(() => import('../../ui/GeneratedChart'));
 
-type View = 'sql' | 'data' | 'chart';
+type View = 'data' | 'chart';
 const views = [
-  { id: 'sql', label: 'SQL', Icon: Braces },
   { id: 'data', label: 'Data', Icon: Table2 },
   { id: 'chart', label: 'Chart', Icon: ChartColumn },
 ] as const;
@@ -132,16 +131,7 @@ export default function EvidenceViews({
   caption?: string;
 }) {
   const scope = useId();
-  const availableViews = outputOnly
-    ? views.filter((item) => item.id !== 'sql')
-    : views;
-  const [view, setView] = useState<View>(
-    node.kind === 'chart'
-      ? 'chart'
-      : !outputOnly && ['query', 'translate'].includes(node.kind)
-      ? 'sql'
-      : 'data',
-  );
+  const [view, setView] = useState<View>('chart');
   const [datasetId, setDatasetId] = useState('');
   const [axes, setAxes] = useState<Record<string, Axes>>({});
   const datasets = scopedDatasets ?? evidenceDatasets(run, node);
@@ -156,7 +146,7 @@ export default function EvidenceViews({
   return (
     <section
       className="evidence-views"
-      aria-label={`${node.title}的${outputOnly ? '输出' : '三种视图'}`}
+      aria-label={`${node.title}的${outputOnly ? '输出' : '双视图'}`}
     >
       <div className="evidence-view-toolbar">
         {caption && <span className="evidence-caption">{caption}</span>}
@@ -165,26 +155,26 @@ export default function EvidenceViews({
           role="tablist"
           aria-label="证据视图"
           onKeyDown={(event) => {
-            const index = availableViews.findIndex((item) => item.id === view);
+            const index = views.findIndex((item) => item.id === view);
             const next =
               event.key === 'ArrowRight'
-                ? (index + 1) % availableViews.length
+                ? (index + 1) % views.length
                 : event.key === 'ArrowLeft'
-                ? (index + availableViews.length - 1) % availableViews.length
+                ? (index + views.length - 1) % views.length
                 : event.key === 'Home'
                 ? 0
                 : event.key === 'End'
-                ? availableViews.length - 1
+                ? views.length - 1
                 : -1;
             if (next < 0) return;
             event.preventDefault();
-            setView(availableViews[next].id);
+            setView(views[next].id);
             event.currentTarget
               .querySelectorAll<HTMLButtonElement>('[role="tab"]')
               [next]?.focus();
           }}
         >
-          {availableViews.map(({ id, label, Icon }) => (
+          {views.map(({ id, label, Icon }) => (
             <button
               key={id}
               id={`${scope}-${id}`}
@@ -221,101 +211,85 @@ export default function EvidenceViews({
         tabIndex={0}
         className="evidence-view-panel"
       >
-        {view === 'sql' ? (
+        {dataset?.preview && (
+          <p className="view-data-note">
+            CSV 预览 · {dataset.rows?.length || 0} /{' '}
+            {dataset.total?.toLocaleString()} 行
+          </p>
+        )}
+        {dataset?.truncated && (
+          <div className="notice">结果已截断，仅展示已保存的数据。</div>
+        )}
+        {view === 'chart' && visualization ? (
+          visualization.status === 'ready' && visualization.config ? (
+            <Suspense
+              fallback={<p className="view-empty">正在加载图表…</p>}
+            >
+              <GeneratedChart config={visualization.config} />
+            </Suspense>
+          ) : (
+            <p className="view-empty" role="status">
+              {visualization.status === 'pending'
+                ? '图表正在异步生成，数据和分析可继续查看…'
+                : visualization.status === 'empty'
+                ? '这份结果不需要图表，可在 Data 查看'
+                : visualization.status === 'failed'
+                ? `图表生成失败：${
+                    visualization.error || '请重新分析后重试'
+                  }`
+                : '图表生成已中断，可重新分析生成图表'}
+            </p>
+          )
+        ) : view === 'chart' && node.kind === 'chart' && !dataset ? (
           <>
-            {query ? (
-              <>
-                <div className="code-caption">
-                  <span className="code-language">SQL</span>
-                  <StatusLabel status={query.status} />
-                </div>
-                <pre className="inline-code">
-                  <SqlCode sql={query.payload.sql} />
-                </pre>
-                {query.id !== node.id && (
-                  <button
-                    className="text-button view-query-link"
-                    onClick={() => onSelect(query.id)}
-                  >
-                    打开查询步骤 <ArrowUpRight size={12} />
-                  </button>
-                )}
-              </>
-            ) : (
-              <p className="view-empty">该环节没有执行 SQL</p>
-            )}
+            <p className="view-data-note">
+              已保存图表 · 源结果不可用
+              {node.payload.truncated ? ' · 仅部分结果' : ''}
+            </p>
+            <Bars title={node.title} rows={node.payload.rows || []} />
           </>
+        ) : !dataset?.rows ? (
+          <p className="view-empty">{pending}</p>
+        ) : view === 'data' ? (
+          <DataTable
+            key={dataset.id}
+            rows={dataset.rows}
+            columns={dataset.columns}
+          />
         ) : (
-          <>
-            {dataset?.preview && (
-              <p className="view-data-note">
-                CSV 预览 · {dataset.rows?.length || 0} /{' '}
-                {dataset.total?.toLocaleString()} 行
-              </p>
-            )}
-            {dataset?.truncated && (
-              <div className="notice">结果已截断，仅展示已保存的数据。</div>
-            )}
-            {view === 'chart' && visualization ? (
-              visualization.status === 'ready' && visualization.config ? (
-                <Suspense
-                  fallback={<p className="view-empty">正在加载图表…</p>}
-                >
-                  <GeneratedChart config={visualization.config} />
-                </Suspense>
-              ) : (
-                <p className="view-empty" role="status">
-                  {visualization.status === 'pending'
-                    ? '图表正在异步生成，数据和分析可继续查看…'
-                    : visualization.status === 'empty'
-                    ? '这份结果不需要图表，可在 Data 查看'
-                    : visualization.status === 'failed'
-                    ? `图表生成失败：${
-                        visualization.error || '请重新分析后重试'
-                      }`
-                    : '图表生成已中断，可重新分析生成图表'}
-                </p>
-              )
-            ) : view === 'chart' && node.kind === 'chart' && !dataset ? (
-              <>
-                <p className="view-data-note">
-                  已保存图表 · 源结果不可用
-                  {node.payload.truncated ? ' · 仅部分结果' : ''}
-                </p>
-                <Bars title={node.title} rows={node.payload.rows || []} />
-              </>
-            ) : !dataset?.rows ? (
-              <p className="view-empty">{pending}</p>
-            ) : view === 'data' ? (
-              <DataTable
-                key={dataset.id}
-                rows={dataset.rows}
-                columns={dataset.columns}
-              />
-            ) : (
-              <ChartPreview
-                key={dataset.id}
-                dataset={dataset}
-                node={node}
-                axes={axes[dataset.id] || {}}
-                onAxes={(next) =>
-                  setAxes((current) => ({ ...current, [dataset.id]: next }))
-                }
-                busy={busy}
-                onChart={onChart}
-              />
-            )}
-            {query && query.id !== node.id && (
-              <button
-                className="text-button view-query-link"
-                onClick={() => onSelect(query.id)}
-              >
-                来源：{dataset.label} <ArrowUpRight size={12} />
-              </button>
-            )}
-          </>
+          <ChartPreview
+            key={dataset.id}
+            dataset={dataset}
+            node={node}
+            axes={axes[dataset.id] || {}}
+            onAxes={(next) =>
+              setAxes((current) => ({ ...current, [dataset.id]: next }))
+            }
+            busy={busy}
+            onChart={onChart}
+          />
+        )}
+        {query && query.id !== node.id && (
+          <button
+            className="text-button view-query-link"
+            onClick={() => onSelect(query.id)}
+          >
+            来源：{dataset.label} <ArrowUpRight size={12} />
+          </button>
         )}
       </div>
+      {!outputOnly && query && (
+        <details>
+          <summary>查看 SQL</summary>
+          <div className="code-caption">
+            <span className="code-language">SQL</span>
+            <StatusLabel status={query.status} />
+          </div>
+          <pre className="inline-code">
+            <SqlCode sql={query.payload.sql} />
+          </pre>
+        </details>
+      )}
     </section>
   );
 }

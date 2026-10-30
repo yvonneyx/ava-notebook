@@ -847,6 +847,11 @@ test('chart failure or no recommendation preserves the successful analysis and i
     await expect(
       page.locator('.view-empty').filter({ hasText: message }),
     ).toBeVisible();
+    const output = page
+      .locator('.cell-output')
+      .filter({ has: page.getByRole('tablist') });
+    await output.getByRole('tab', { name: 'Data', exact: true }).click();
+    await expect(output.getByRole('table')).toContainText('10');
   }
 });
 
