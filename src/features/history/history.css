@@ -167,19 +167,34 @@
 .model-button {
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: 10px;
   width: 100%;
   text-align: left;
-  background: #ffffff;
-  padding: 10px 12px;
-  border-radius: 18px;
-  border: 1px solid #e3eef5;
-  box-shadow: 0 3px 12px #2e566005;
+  color: #45545f;
+  background: transparent;
+  padding: 9px 8px;
+  border-radius: 12px;
+  border: 1px solid transparent;
 }
 .model-button:hover {
-  background: #fffef9;
+  background: #e7eef2;
 }
-.model-button > div {
+.model-button:focus-visible {
+  outline: 2px solid #7095aa;
+  outline-offset: 2px;
+}
+.model-button-icon {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  border: 1px solid #dce7ed;
+  border-radius: 10px;
+  background: #fff;
+  color: #607a89;
+}
+.model-button-content {
   min-width: 0;
   flex: 1;
 }
@@ -191,8 +206,17 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.model-button > svg {
-  color: #818b97;
+.model-button-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  color: #84929c;
+  font-size: 10px;
+}
+.model-button-arrow {
+  flex-shrink: 0;
+  color: #a4b1ba;
 }
 .search {
   display: flex;
@@ -241,8 +265,8 @@
   .new-analysis > span,
   .sidebar-label,
   .history-list,
-  .model-button > div,
-  .model-button > .connection-dot,
+  .model-button-content,
+  .model-button-arrow,
   .search {
     display: none;
   }
@@ -256,7 +280,7 @@
   }
   .model-button {
     justify-content: center;
-    padding: 8px;
+    padding: 5px;
   }
   .sidebar-open > .sidebar {
     position: fixed;
@@ -272,15 +296,19 @@
   .sidebar-open .brand strong,
   .sidebar-open .new-analysis > span,
   .sidebar-open .history-list,
-  .sidebar-open .model-button > div {
+  .sidebar-open .model-button-content {
     display: block;
   }
   .sidebar-open .sidebar-label,
   .sidebar-open .search {
     display: flex;
   }
-  .sidebar-open .model-button > .connection-dot {
-    display: inline-block;
+  .sidebar-open .model-button-arrow {
+    display: block;
+  }
+  .sidebar-open .model-button {
+    justify-content: flex-start;
+    padding: 9px 8px;
   }
   .sidebar-open .new-analysis {
     justify-content: flex-start;

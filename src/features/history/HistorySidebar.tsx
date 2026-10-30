@@ -6,6 +6,7 @@ import {
   Search,
   Trash2,
   Settings2,
+  ChevronRight,
 } from 'lucide-react';
 import type { Run, Session } from '../../../shared/contracts';
 import { isActive } from '../../domain/status';
@@ -61,7 +62,7 @@ export default function HistorySidebar({
           <NotebookPen size={20} strokeWidth={1.8} />
         </span>
         <strong>
-          ava<span>notebook</span>
+          AVA<span>notebook</span>
         </strong>
       </a>
       <button
@@ -127,15 +128,17 @@ export default function HistorySidebar({
           aria-label="配置分析模型"
           onClick={() => onSettings()}
         >
-          <span
-            className={`connection-dot ${session?.configured ? 'ok' : ''}`}
-          />
-          <div>
+          <span className="model-button-icon"><Settings2 size={16} /></span>
+          <span className="model-button-content">
             <strong>
               {session?.configured ? session.model : '连接分析模型'}
             </strong>
-          </div>
-          <Settings2 size={15} />
+            <span className="model-button-status">
+              <span className={`connection-dot ${session?.configured ? 'ok' : ''}`} />
+              {session?.configured ? '已配置' : '尚未配置'}
+            </span>
+          </span>
+          <ChevronRight size={14} className="model-button-arrow" />
         </button>
       </div>
     </aside>

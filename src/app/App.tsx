@@ -101,7 +101,14 @@ export default function App() {
       await history.refresh();
     });
   }
-  const exploreSales = () => openRun('case-sales-performance');
+  async function exploreSales() {
+    const [{ default: csv }, { default: question }] = await Promise.all([
+      import('../../examples/sales/sales-case.csv?raw'),
+      import('../../examples/sales/sales-question.txt?raw'),
+    ]);
+    await composer.upload(new File([csv], 'sales-case.csv', { type: 'text/csv' }));
+    composer.setQuestion(question.trim());
+  }
   return (
     <AppShell
       hasRun={!!run}
