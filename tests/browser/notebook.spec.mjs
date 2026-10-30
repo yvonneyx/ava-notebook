@@ -26,6 +26,15 @@ test.beforeAll(async () => {
     const body = JSON.parse(raw);
     const prompt = body.messages.map((message) => message.content).join('\n');
     requests.push({ auth: request.headers.authorization, prompt });
+    if ('response_format' in body) {
+      response.writeHead(400, { 'Content-Type': 'application/json' });
+      response.end(
+        JSON.stringify({
+          error: { message: 'This response_format type is unavailable now' },
+        }),
+      );
+      return;
+    }
     if (
       prompt.includes('hold-browser-test') ||
       (prompt.includes('hold-summary-chart-test') &&
@@ -257,7 +266,7 @@ test('AVA browser DuckDB executes real SQL, profiles, bounds results and rejects
   expect(result.after.data).toEqual([{ total: 10 }]);
 });
 
-test('production Notebook runs direct with retry, generates a chart, renders graph and restores records', async ({
+test('production Notebook runs direct without response_format, retries SQL, renders charts and restores records', async ({
   page,
   context,
 }) => {
@@ -333,6 +342,8 @@ test('production Notebook runs direct with retry, generates a chart, renders gra
   await expect(page.getByLabel('API Key', { exact: true })).toHaveAttribute(
     'placeholder', '已配置，留空保持当前密钥',
   );
+  expect(await records(page, 'sources')).toHaveLength(1);
+  expect(JSON.stringify(await records(page, 'runs'))).not.toContain('browser-test-key');
   expect(page.url()).toBe(url);
   expect(apiCalls).toEqual([]);
 });

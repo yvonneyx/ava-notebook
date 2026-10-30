@@ -30,6 +30,8 @@ npm install ./vendor/antv-ava-4.0.0-beta.3.tgz
 
 输入区可选择 Direct 快速分析或 Loop 深入分析。Direct 按「生成查询 → 执行 → 总结」运行，SQL 失败时自动修正。Loop 按模型返回的动作探索数据、修正方案、执行查询并核验结果，默认最多 12 轮，必要时由 AVA 执行最终查询。两种策略都支持停止；SQL、错误、结果和步骤文本实时保存。
 
+Direct 总结使用普通文本请求 JSON，不要求模型接口支持 `response_format`。AVA 在本地修复 JSON 格式并校验字段；无效或缺失结论仍会报错，已执行的 SQL 和结果会保留。
+
 界面按「分析问题 → 查询说明 → SQL 与结果 → 证据局限 → 分析结论 → 后续计划」组织笔记。查询完成后 SQL 默认折叠；运行中或失败的查询展开。每条查询都有独立结果，可切换 Data / Chart，并从详情保存柱状图。图谱展示同一份记录的来源关系。
 
 只接受新版 `context.eventId`、`stepId` 和 `parentStepIds` 事件结构，不解析旧 `context.operationId`、顶层 `id` 或 `parentIds`。步骤编号取自新版 `stepstart/stepend.data.step`，不作为身份标识。不提供暂停、单步、SQL 修改或检查点分支。旧格式记录与旧内置案例不迁移、不自动载入。

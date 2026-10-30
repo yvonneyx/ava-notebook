@@ -10,3 +10,4 @@ dist-static/
 .lh/
 test-results/
 playwright-report/
+.vercel
