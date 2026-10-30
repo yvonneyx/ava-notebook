@@ -1,4 +1,4 @@
-import { PanelLeft, BookOpen, ChevronRight, Download } from 'lucide-react';
+import { PanelLeft, BookOpen, Download } from 'lucide-react';
 import type { Run } from '../../../shared/contracts';
 import { api } from '../../runtime/client';
 
@@ -6,10 +6,12 @@ export default function RunHeader({
   run,
   sidebarOpen,
   onToggleSidebar,
+  onHome,
 }: {
   run: Run;
   sidebarOpen: boolean;
   onToggleSidebar: () => void;
+  onHome: () => void;
 }) {
   return (
     <header
@@ -25,13 +27,9 @@ export default function RunHeader({
         >
           <PanelLeft size={18} />
         </button>
-        <span className="header-context">
-          <BookOpen size={15} className="workspace-icon" />
-          <span>我的工作空间</span>
-          <ChevronRight size={13} />
-          <span>分析笔记</span>
-          <ChevronRight size={13} />
-        </span>
+        <button className="icon-button" aria-label="返回首页" onClick={onHome}>
+          <BookOpen size={15} />
+        </button>
         <strong
           className="header-title"
           title={`${run.source.name.replace(/\.csv$/i, '')}.notebook`}

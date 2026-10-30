@@ -40,13 +40,6 @@
   min-width: 0;
   flex: 1;
 }
-.header-context {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  flex-shrink: 0;
-  white-space: nowrap;
-}
 .header-title {
   min-width: 0;
   overflow: hidden;

@@ -134,6 +134,7 @@ export default function App() {
           run={run}
           sidebarOpen={sidebarOpen}
           onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
+          onHome={newAnalysis}
         />
       )}
       {error && (
