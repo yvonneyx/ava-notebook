@@ -6,7 +6,8 @@
   </head>
   <body>
     <script type="module">
-      import { AVA, DuckDBWasmEngine } from '@antv/ava/duckdb-wasm';
+      import { AVA, registerEngine } from '@antv/ava/browser';
+      import { DuckDBWasmEngine } from 'ava-duckdb-wasm';
       import { MockLanguageModelV4 } from 'ai/test';
       import { createVisualizationQueue } from '/src/runtime/visualizations.ts';
       import { readCSV } from '/src/runtime/csv.ts';
@@ -17,6 +18,7 @@
         eventNodeId,
       } from '/shared/evidence.mjs';
       import { bundles } from '/src/runtime/duckdb-bundles.ts';
+      registerEngine('duckdb-wasm', DuckDBWasmEngine);
       window.createEngine = (options = {}) =>
         new DuckDBWasmEngine({ model: 'test' }, { bundles, ...options });
       Object.assign(window, {

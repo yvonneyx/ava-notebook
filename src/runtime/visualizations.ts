@@ -1,5 +1,5 @@
-import { AVA } from '@antv/ava/duckdb-wasm';
-import type { LLMConfig } from '@antv/ava/duckdb-wasm';
+import { AVA } from '@antv/ava/browser';
+import type { LLMConfig } from '@antv/ava/browser';
 import type { Visualization } from '../../shared/contracts';
 
 export function createVisualizationQueue(

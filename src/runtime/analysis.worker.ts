@@ -1,6 +1,9 @@
-import { AVA } from '@antv/ava/duckdb-wasm';
+import { AVA, registerEngine } from '@antv/ava/browser';
+import { DuckDBWasmEngine } from 'ava-duckdb-wasm';
 import { bundles } from './duckdb-bundles';
 import { createVisualizationQueue } from './visualizations';
+
+registerEngine('duckdb-wasm', DuckDBWasmEngine);
 
 self.onmessage = async ({ data }) => {
   const ava = new AVA({

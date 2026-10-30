@@ -336,6 +336,7 @@ test('production Notebook runs direct without response_format, retries SQL, rend
   );
   await page.getByLabel('模型名称', { exact: true }).fill('updated-model');
   await page.getByRole('button', { name: '保存配置', exact: true }).click();
+  await expect(page.getByRole('dialog')).toBeHidden();
   await page.reload();
   await page.getByRole('button', { name: '配置分析模型', exact: true }).click();
   await expect(page.getByLabel('模型名称', { exact: true })).toHaveValue('updated-model');
