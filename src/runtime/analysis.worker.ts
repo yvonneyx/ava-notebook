@@ -1,5 +1,5 @@
 import { AVA, registerEngine } from '@antv/ava/browser';
-import { DuckDBWasmEngine } from 'ava-duckdb-wasm';
+import { DuckDBWasmEngine } from 'ava-engine-duckdb-wasm';
 import { bundles } from './duckdb-bundles';
 import { createVisualizationQueue } from './visualizations';
 
