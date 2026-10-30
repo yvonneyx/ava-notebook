@@ -10,7 +10,7 @@
 
 </div>
 
-![AVA Notebook 分析笔记](https://mdn.alipayobjects.com/huamei_aphk1k/afts/img/A*NypWQongLZkAAAAAU0AAAAgAegfkAQ/original)
+![AVA Notebook 首页](docs/images/home.png)
 
 ## ✨ 从问题到答案
 
@@ -26,7 +26,9 @@ DuckDB-Wasm 在浏览器中执行 SQL。分析过程中会向你配置的模型�
 
 首页提供「销售额高就更赚钱吗」「各地区销售额对比」和「2 月业绩下滑归因」三个案例，打开即可回看分析过程。
 
-![AVA Notebook 证据图谱](https://mdn.alipayobjects.com/huamei_aphk1k/afts/img/A*JoFyTKR_RKkAAAAATOAAAAgAegfkAQ/original)
+| 📓 分析笔记 | 🔎 证据图谱 |
+| :---: | :---: |
+| ![AVA Notebook 分析笔记](https://mdn.alipayobjects.com/huamei_aphk1k/afts/img/A*NypWQongLZkAAAAAU0AAAAgAegfkAQ/original) | ![AVA Notebook 证据图谱](https://mdn.alipayobjects.com/huamei_aphk1k/afts/img/A*JoFyTKR_RKkAAAAATOAAAAgAegfkAQ/original) |
 
 ## 🛠️ 本地运行
 
