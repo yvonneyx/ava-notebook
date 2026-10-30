@@ -21,6 +21,20 @@ test('classic cases replay new AVA events and preserve evidence', async () => {
     assert.equal(saved.caseStudy.recorded, true);
     assert.ok(!('mode' in saved));
     assert.ok(saved.nodes.every((node) => !node.checkpoint));
+    const results = saved.nodes.filter(
+      (node) => node.kind === 'result' && node.payload.data?.length,
+    );
+    assert.ok(results.some((node) => node.visualization?.status === 'ready'));
+    for (const result of results) {
+      assert.ok(['ready', 'empty'].includes(result.visualization?.status));
+      if (result.visualization.status === 'ready') {
+        assert.equal(
+          result.visualization.config.type,
+          result.visualization.chartType,
+        );
+        assert.ok(!('html' in result.visualization));
+      }
+    }
     const replay = { strategy: saved.strategy, nodes: [] };
     const ids = new Set();
     for (const event of saved.events) {
@@ -32,7 +46,25 @@ test('classic cases replay new AVA events and preserve evidence', async () => {
       ids.add(event.context.eventId);
       applyEvent(replay, event);
     }
-    completeRun(replay, saved.result);
+    const response = { ...saved.result };
+    // These fields are projected from summary events, rather than returned by analyze().
+    for (const field of [
+      'queryExplanation',
+      'limitations',
+      'conclusion',
+      'nextStep',
+    ])
+      delete response[field];
+    completeRun(replay, response);
+    const summary = saved.nodes.find((node) => node.kind === 'summary');
+    for (const field of [
+      'queryExplanation',
+      'limitations',
+      'conclusion',
+      'nextStep',
+    ])
+      if (summary?.payload[field] !== undefined)
+        assert.equal(saved.result[field], summary.payload[field]);
     assert.deepEqual(
       JSON.parse(JSON.stringify(replay.nodes.at(-1).payload)),
       saved.nodes.find((node) => node.kind === 'conclusion').payload,
@@ -99,16 +131,53 @@ test('quick profitability case uses one query and reconciles every product to th
       '利润率（%）': Number(((100 * totals.profit) / totals.sales).toFixed(2)),
       '利润占比（%）': Number(((100 * totals.profit) / totalProfit).toFixed(2)),
     }));
-  assert.deepEqual(run.result.data, expected);
-  assert.match(
-    run.result.conclusion,
-    /Laptop.*115,746\.25.*22,146\.25.*26\.35%.*19\.13%/s,
-  );
-  assert.match(
-    run.result.conclusion,
-    /Office Chair.*15,580\.30.*Monitor.*15,459\.00/s,
-  );
+  const actual = run.result.data.map((row) => ({
+    商品: row.product,
+    销售额: Number(row.total_sales.toFixed(2)),
+    利润: Number(row.total_profit.toFixed(2)),
+    '利润率（%）': Number((100 * row.profit_margin).toFixed(2)),
+    '利润占比（%）': Number((100 * row.profit_proportion).toFixed(2)),
+  }));
+  assert.deepEqual(actual, expected);
+  assert.match(run.result.conclusion, /Laptop/);
+  assert.match(run.result.conclusion, /19\.13/);
+  assert.match(run.result.conclusion, /26\.35/);
   assert.ok(run.result.queryExplanation);
   assert.ok(run.result.limitations);
   assert.ok(run.result.nextStep);
+});
+
+test('refreshed sales case reconciles month totals and daily values to independent accounting', async () => {
+  const cases = JSON.parse(
+    await readFile(
+      new URL('../../examples/classic/generated/cases.json', import.meta.url),
+      'utf8',
+    ),
+  );
+  const expected = JSON.parse(
+    await readFile(
+      new URL('../fixtures/sales-expected.json', import.meta.url),
+      'utf8',
+    ),
+  );
+  const run = cases.find((item) => item.id === 'case-sales-performance');
+  assert.equal(run.result.data.length, 2);
+  for (const row of run.result.data) {
+    const month = new Date(row.month).toISOString().slice(0, 7);
+    const known = expected[month];
+    assert.ok(known);
+    assert.equal(row.days, known.days);
+    assert.ok(Math.abs(row.net_revenue - known.net_revenue) < 0.001);
+    assert.ok(
+      Math.abs(row.contrib_after_ads - known.contribution_after_ads) < 0.001,
+    );
+    assert.equal(
+      row.daily_net_revenue,
+      Number((known.net_revenue / known.days).toFixed(2)),
+    );
+    assert.equal(
+      row.daily_contrib_after_ads,
+      Number((known.contribution_after_ads / known.days).toFixed(2)),
+    );
+  }
 });

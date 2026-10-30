@@ -89,7 +89,7 @@ test('refresh settles orphaned chart jobs without losing a completed analysis', 
   Object.defineProperty(navigator, 'locks', {
     configurable: true,
     value: {
-      request: async (_name, _options, callback) => callback({}),
+      request: async (_name, options, callback) => (callback || options)({}),
     },
   });
   t.after(() => {
@@ -130,7 +130,9 @@ test('recovery re-reads under the task lock instead of overwriting a chart that 
   Object.defineProperty(navigator, 'locks', {
     configurable: true,
     value: {
-      request: async (_name, _options, callback) => {
+      request: async (name, options, callback) => {
+        callback ||= options;
+        if (name !== 'ava-notebook-run:chart-race') return callback({});
         await storage.writeLocal('runs', record.id, {
           ...record,
           revision: 2,
@@ -157,4 +159,44 @@ test('recovery re-reads under the task lock instead of overwriting a chart that 
   assert.equal(saved.revision, 2);
   assert.equal(saved.nodes[0].visualization.status, 'ready');
   await storage.deleteLocal('runs', record.id);
+});
+
+test('new classic snapshots replace old copies while preserving personal charts as history', async () => {
+  const current = await client.api('/runs/case-product-profitability');
+  const chart = {
+    id: 'personal-chart',
+    kind: 'chart',
+    sequence: current.nodes.length,
+    parents: [],
+    payload: { rows: [{ label: 'old', value: 10 }] },
+  };
+  const previous = {
+    ...structuredClone(current),
+    createdAt: '2000-01-01T00:00:00Z',
+    nodes: [...current.nodes, chart],
+  };
+  await storage.writeLocal('runs', previous.id, previous);
+  const listed = await client.api('/runs');
+  const updated = await client.api('/runs/' + current.id);
+  assert.equal(updated.createdAt, current.createdAt);
+  assert.ok(!updated.nodes.some((node) => node.id === chart.id));
+  const archives = (await storage.listLocal('runs')).filter(
+    (run) => run.createdAt === previous.createdAt,
+  );
+  assert.equal(archives.length, 1);
+  assert.equal(archives[0].caseStudy, undefined);
+  assert.deepEqual(archives[0].nodes, previous.nodes);
+  assert.ok(listed.some((run) => run.id === archives[0].id && !run.caseStudy));
+  assert.equal(listed.filter((run) => run.id === current.id).length, 1);
+  await storage.writeLocal('runs', current.id, {
+    ...updated,
+    nodes: [...updated.nodes, chart],
+  });
+  assert.ok(
+    (await client.api('/runs/' + current.id)).nodes.some(
+      (node) => node.id === chart.id,
+    ),
+  );
+  await storage.deleteLocal('runs', archives[0].id);
+  await storage.deleteLocal('runs', current.id);
 });

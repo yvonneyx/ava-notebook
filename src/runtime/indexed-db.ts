@@ -58,3 +58,17 @@ export async function deleteLocal(store: string, key: string) {
     transaction.onerror = () => reject(transaction.error);
   });
 }
+
+export async function archiveLocalRun(id: string, archive: { id: string }) {
+  const db = await openDatabase();
+  return new Promise<void>((resolve, reject) => {
+    const transaction = db.transaction('runs', 'readwrite');
+    const store = transaction.objectStore('runs');
+    store.put(archive, archive.id);
+    store.delete(id);
+    transaction.oncomplete = () => resolve();
+    transaction.onabort = () =>
+      reject(new Error('旧版案例保存失败，请检查浏览器存储空间。'));
+    transaction.onerror = () => reject(transaction.error);
+  });
+}

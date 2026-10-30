@@ -1,5 +1,11 @@
 import type { Run, Session, Source } from '../../shared/contracts';
-import { readLocal, listLocal, writeLocal, deleteLocal } from './indexed-db';
+import {
+  readLocal,
+  listLocal,
+  writeLocal,
+  deleteLocal,
+  archiveLocalRun,
+} from './indexed-db';
 import {
   activeRun,
   activeRunId,
@@ -26,15 +32,30 @@ const session = (): Session => ({
 });
 
 async function classicCases(): Promise<Run[]> {
-  return (await import('../../examples/classic/generated/cases.json'))
+  const cases = (await import('../../examples/classic/generated/cases.json'))
     .default as unknown as Run[];
+  return cases;
+}
+
+async function refreshClassicCopies() {
+  for (const current of await classicCases()) {
+    await mutateBrowserRun(current.id, async () => {
+      const saved = await readLocal<Run>('runs', current.id);
+      if (!saved?.caseStudy || saved.createdAt === current.createdAt) return;
+      // Keep personal charts on the old snapshot while showing the newly generated case.
+      const { caseStudy, ...archive } = saved;
+      archive.id = crypto.randomUUID();
+      await archiveLocalRun(saved.id, archive);
+    });
+  }
 }
 
 async function readRun(id: string) {
+  const cases = await classicCases();
   return (
     activeRun(id) ||
     (await readLocal<Run>('runs', id)) ||
-    structuredClone((await classicCases()).find((run) => run.id === id))
+    structuredClone(cases.find((run) => run.id === id))
   );
 }
 
@@ -73,14 +94,12 @@ async function handleBrowserApi<T>(
     await recoverRuns();
     result = session();
   } else if (method === 'GET' && path === '/runs') {
+    const cases = await classicCases();
     const saved = (await listLocal<Run>('runs')).map(
       (run) => activeRun(run.id) ?? run,
     );
     const ids = new Set(saved.map((run) => run.id));
-    result = [
-      ...saved,
-      ...(await classicCases()).filter((run) => !ids.has(run.id)),
-    ]
+    result = [...saved, ...cases.filter((run) => !ids.has(run.id))]
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
       .map(runSummary);
   } else if (method === 'POST' && path === '/runs') {
@@ -175,7 +194,8 @@ export function browserApi<T>(
   path: string,
   options: RequestInit = {},
 ): Promise<T> {
-  return lock(() => {
+  return lock(async () => {
+    await refreshClassicCopies();
     const id = path.split('/')[2];
     if (
       (options.method === 'DELETE' && /^\/runs\/[^/]+$/.test(path)) ||

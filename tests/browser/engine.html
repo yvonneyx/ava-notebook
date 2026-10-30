@@ -8,6 +8,7 @@
     <script type="module">
       import { AVA, DuckDBWasmEngine } from '@antv/ava/duckdb-wasm';
       import { MockLanguageModelV4 } from 'ai/test';
+      import { createVisualizationQueue } from '/src/runtime/visualizations.ts';
       import { readCSV } from '/src/runtime/csv.ts';
       import {
         putNode,
@@ -21,6 +22,7 @@
       Object.assign(window, {
         AVA,
         MockLanguageModelV4,
+        createVisualizationQueue,
         readCSV,
         putNode,
         applyEvent,

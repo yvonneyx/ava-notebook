@@ -98,9 +98,23 @@ await ava.analyze(question, {
 
 ### 经典案例回顾
 
-首页预装「销售额高就更赚钱吗」（Direct 快速模式）、「各地区销售额对比」和「2 月业绩下滑归因」（Loop 探索模式）。快速案例用一次商品汇总查询比较销售额、利润、利润率及利润占比，SQL 与总结是基于查询结果编写的预设示例，不冒充真实模型调用；其余案例沿用预录模型回应。`examples/classic/recordings.json` 保存各案例的策略、回应、输入数据和说明；生成脚本让当前 AVA 实际执行 SQL，`examples/classic/generated/cases.json` 保存完整新事件、节点和结论。页面按需读取内置案例；保存图表时在 IndexedDB 中记录个人副本，重新打开保留修改；案例与个人历史分开展示。
+首页预装「销售额高就更赚钱吗」（Direct 快速模式）、「各地区销售额对比」和「2 月业绩下滑归因」（Loop 探索模式）。三个案例均由真实 GLM-5.1 调用与 DuckDB-Wasm 查询执行后录制。`examples/classic/recordings.json` 保存分析响应，以及按请求内容指纹绑定的图表响应；`examples/classic/generated/cases.json` 保存事件、节点、查询结果、结论和图表 JSON。页面打开案例不会调用模型。
 
-重新生成案例：`node scripts/generate-classic-cases.mjs`，需要本机 Chrome，无需模型密钥。使用 `--check` 可通过真实浏览器 Wasm 重放并核对结果，不改写内置记录。脚本按各案例声明的 Direct 或 Loop 策略执行，全部完成后才更新内置记录。它不读取旧事件或检查点，也不会在用户打开页面时调用模型。
+离线重新执行 SQL、回放模型响应并核对结论、每次查询的数据和图表：
+
+```sh
+node scripts/generate-classic-cases.mjs --check
+```
+
+真实重跑三个案例（需要 Node 22、Chrome 和本地 `OPENAI_API_KEY`、`OPENAI_MODEL`、`OPENAI_BASE_URL` 配置）：
+
+```sh
+node --env-file-if-exists=.env scripts/generate-classic-cases.mjs --live
+```
+
+录制脚本在 Node 进程中认证并使用流式模型传输，浏览器只执行 Wasm 查询；密钥不发送到浏览器或写入记录。临时断连可重试，已经取得的模型响应按输入指纹缓存到终端打印的临时进度文件。中断后可追加 `--resume <进度文件>` 继续；格式不符合 Loop 协议时请求模型重发，而不拼造响应。录制时图表可等待 180 秒，网页交互仍使用 60 秒上限。全部完成后才更新两个正式案例文件。
+
+案例更新后，上一批案例中保存过的个人图表会连同原节点和事件保留到个人历史，首页展示新版本；同批案例已有的修改继续保留。
 
 ## 验证
 
@@ -110,7 +124,7 @@ npm run test:browser
 node scripts/generate-classic-cases.mjs --check
 ```
 
-默认生产构建、31 项单元测试和 Chrome 29 项浏览器测试通过。经典案例此前的 3 项 Wasm 重放结果保持不变。异步图表测试使用真实 AVA visualize 和 GPT-Vis，模型由本地模拟接口提供。
+默认生产构建、33 项单元测试和 Chrome 33 项浏览器场景已验证。三个内置案例由真实 GLM-5.1 新执行并保存 14 份图表 JSON，离线重放同时核对每次 SQL 数据、结论和图表；交互回归使用本地模拟接口或保存的真实响应。
 
 单元测试覆盖事件配对、步骤依赖、SQL 重试证据、Loop 核验、视图、CSV 校验及浏览器调用边界。原生 DuckDB / HTTP / SQLite 测试已随服务端移除；销售数据与语义会计核对迁到真实 Wasm 浏览器测试。
 
@@ -139,3 +153,5 @@ Web Locks 将图表保存/删除的完整读改写过程串行化，避免两个
 跨浏览器限制：本轮 Chrome 完整流程与性能测试通过。匹配测试工具版本的 WebKit 进程在页面打开前被本机系统终止，因此不将 Safari/WebKit 标记为通过。Firefox 的跨域失败通过最小实验定位为 SDK 的自定义 User-Agent 请求头，AVA 已在浏览器请求中移除该多余头；修复后 Direct（含重试、图表、图谱、导出及恢复）、Loop、移动布局和销售语义/会计核对通过。本机复测时曾发生一次创建空白页面阶段的 Firefox 进程崩溃，Loop 单独重跑及最终整轮 4 项测试均通过。仍未覆盖真实手机内存压力。
 
 异步图表追加验证：31 项单元测试和 Chrome 全部 29 项浏览器测试通过，包含逐结果生成、并发排队、分析先结束、继续新分析、跨标签页推送、刷新中断、取消/删除及 JSON 渲染隔离。Firefox 的 Direct 完整流程（包括生成、渲染、导出及恢复）通过；其余 3 项与单独 Loop 复测在打开 Notebook 前受本机 Firefox 子进程启动失败阻断，日志为 `Failed to launch tab subprocess @MachCheckInListener TimedOut`，不将它们计为本轮通过。
+
+三个案例本次刷新结果：地区销售额对比为 3 步 / 2 图，经营下滑归因为 12 步 / 11 图，商品盈利能力为 Direct 1 步 / 1 图。真实模型输出经过源 CSV 的金额/比例/月份分母独立核对；不正确的结论由模型在相同证据上重新确认，保留原始分析过程和最后的更正。

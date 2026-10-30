@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { createServer } from 'node:http';
+import { readFile } from 'node:fs/promises';
 
 let provider, baseURL;
 const requests = [];
@@ -304,7 +305,6 @@ test('production Notebook runs direct with retry, generates a chart, renders gra
   const download = page.waitForEvent('download');
   await page.getByRole('button', { name: '导出证据', exact: true }).click();
   const exported = await download;
-  const { readFile } = await import('node:fs/promises');
   const json = JSON.parse(await readFile(await exported.path(), 'utf8'));
   expect(json.run.events.length).toBeGreaterThan(0);
   const visualization = json.run.nodes.find(
@@ -481,7 +481,6 @@ test('storage failure stops analysis and keeps unsaved evidence available for ex
   const pending = page.waitForEvent('download');
   await page.getByRole('button', { name: '导出证据', exact: true }).click();
   const download = await pending;
-  const { readFile } = await import('node:fs/promises');
   const exported = JSON.parse(await readFile(await download.path(), 'utf8'));
   expect(exported.run.status).toBe('failed');
   expect(exported.run.events.length).toBeGreaterThanOrEqual(3);
@@ -562,17 +561,56 @@ test('two tabs saving charts cannot overwrite each other', async ({
   page,
   context,
 }) => {
-  await page.goto('/?run=case-product-profitability');
+  const legacy = JSON.parse(
+    await readFile('examples/classic/generated/cases.json', 'utf8'),
+  ).find((run) => run.id === 'case-product-profitability');
+  legacy.id = 'legacy-manual-charts';
+  delete legacy.caseStudy;
+  for (const node of legacy.nodes) delete node.visualization;
+  const successful =
+    legacy.nodes
+      .filter((node) => node.kind === 'query')
+      .findIndex((node) => node.status === 'succeeded') + 1;
+  const row = legacy.nodes.find((node) => node.kind === 'result').payload
+    .data[0];
+  const category = Object.keys(row).find(
+    (name) => typeof row[name] === 'string',
+  );
+  await page.goto('/');
+  await expect(
+    page.getByRole('button', { name: '回顾：销售额高就更赚钱吗', exact: true }),
+  ).toBeVisible();
+  await page.evaluate(async (run) => {
+    const db = await new Promise((resolve) => {
+      const request = indexedDB.open('ava-notebook-direct', 1);
+      request.onsuccess = () => resolve(request.result);
+    });
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction('runs', 'readwrite');
+      tx.objectStore('runs').put(run, run.id);
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    });
+    db.close();
+  }, legacy);
+  await page.goto('/?run=' + legacy.id);
   const other = await context.newPage();
   await other.goto(page.url());
   async function selectChart(tab) {
-    await tab.getByLabel('查看查询 1 的 SQL', { exact: true }).click();
     await tab
-      .getByRole('button', { name: '查看查询 1 的详情', exact: true })
+      .getByLabel(`查看查询 ${successful} 的 SQL`, { exact: true })
+      .click();
+    await tab
+      .getByRole('button', {
+        name: `查看查询 ${successful} 的详情`,
+        exact: true,
+      })
       .click();
     const detail = tab.getByRole('complementary').last();
     await detail.getByRole('tab', { name: 'Chart', exact: true }).click();
-    await detail.getByLabel('图表分类列', { exact: true }).selectOption('商品');
+    await detail
+      .getByLabel('图表分类列', { exact: true })
+      .selectOption(category);
   }
   await selectChart(page);
   await selectChart(other);

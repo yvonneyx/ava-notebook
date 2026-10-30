@@ -44,3 +44,5 @@ Web Locks 标识仍在其他标签页运行的任务，刷新仅将失去锁的�
 图表生成从每次成功且非空的 `queryend` 启动，独立 AVA 实例调用 visualize，避免图表事件混入分析步骤。分析完成后释放分析占用状态，Worker 等待图表完成再退出；任务锁仍保护对应记录，防止其他标签页把后台图表误判为中断。生成结果写入原结果节点的 `visualization` 字段，不复制其他步骤的数据。
 
 Chart 视图从 `EvidenceDataset.result` 获取配置，按需加载 `GeneratedChart`。GPT-Vis UMD 资源随页面同源发布，在沙箱 iframe 内只读取 JSON；不使用模型生成的 HTML，iframe 不访问父页面存储或网络服务。旧的手动图表节点保持兼容。
+
+案例录制与交互分析共用 `runtime/visualizations.ts` 的异步生成队列。新版案例通过生成时间区分批次；旧批次的浏览器修改副本用同一个 IndexedDB 事务转存为个人历史，保留原节点、事件与图表，再显示新的内置案例。
