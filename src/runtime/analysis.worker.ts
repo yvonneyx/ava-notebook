@@ -52,6 +52,13 @@ self.onmessage = async ({ data }) => {
   try {
     await ava.source({ type: 'csv', options: { csv: await data.file.text() } });
     self.postMessage({ type: 'context', data: { schema: await ava.schema() } });
+    if (data.semantic) {
+      await ava.semantic({}, () => data.semantic);
+      self.postMessage({
+        type: 'context',
+        data: { semantic: await ava.semantic() },
+      });
+    }
     self.postMessage({
       type: 'context',
       data: {

@@ -349,6 +349,132 @@ test('production Notebook runs direct without response_format, retries SQL, rend
   expect(apiCalls).toEqual([]);
 });
 
+test('semantic settings persist, reach the model and evidence, and keep earlier run snapshots', async ({
+  page,
+}) => {
+  const firstRule =
+    'semantic-test-v1: sales 是已扣除退款的净销售额，只分析当前 CSV。';
+  const secondRule = 'semantic-test-v2: 按地区比较净销售额，结论附上查询依据。';
+  await page.goto('/');
+  await configure(page);
+  await upload(page, 'sum sales with business rules');
+  await page.getByRole('button', { name: '配置语义口径', exact: true }).click();
+  await page
+    .getByRole('textbox', { name: '语义口径内容', exact: true })
+    .fill(firstRule);
+  await page.getByRole('button', { name: '应用口径', exact: true }).click();
+  await expect(page.getByRole('button', { name: '编辑语义口径', exact: true })).toBeVisible();
+  await expect
+    .poll(async () =>
+      (
+        await records(page, 'drafts')
+      ).some(
+        (draft) =>
+          draft.source?.semantic?.definition?.description === firstRule,
+      ),
+    )
+    .toBe(true);
+  await page.reload();
+  await expect(
+    page.getByRole('button', { name: '编辑语义口径', exact: true }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: '开始分析', exact: true }).click();
+  const first = await currentRecord(page, 'completed');
+  expect(first.source.semantic.definition.description).toBe(firstRule);
+  expect(
+    first.nodes.find((node) => node.kind === 'context').payload.semantic
+      .description,
+  ).toBe(firstRule);
+  expect(requests.some((request) => request.prompt.includes(firstRule))).toBe(
+    true,
+  );
+  expect(
+    first.nodes.find((node) => node.kind === 'result').payload.data,
+  ).toEqual([{ total: 10 }]);
+
+  await page.getByRole('button', { name: '语义口径', exact: true }).click();
+  await page
+    .getByRole('textbox', { name: '语义口径内容', exact: true })
+    .fill(secondRule);
+  await page.getByRole('button', { name: '应用口径', exact: true }).click();
+  await expect(page).toHaveURL('/');
+  expect(
+    (await records(page)).find((run) => run.id === first.id).source.semantic
+      .definition.description,
+  ).toBe(firstRule);
+  await page.getByRole('button', { name: '开始分析', exact: true }).click();
+  const second = await currentRecord(page, 'completed');
+  expect(second.source.semantic.definition.description).toBe(secondRule);
+  expect(second.source.semantic.hash).not.toBe(first.source.semantic.hash);
+  expect(
+    second.nodes.find((node) => node.kind === 'context').payload.semantic
+      .description,
+  ).toBe(secondRule);
+  expect(requests.some((request) => request.prompt.includes(secondRule))).toBe(
+    true,
+  );
+
+  const download = page.waitForEvent('download');
+  await page.getByRole('button', { name: '导出证据', exact: true }).click();
+  const exported = JSON.parse(
+    await readFile(await (await download).path(), 'utf8'),
+  );
+  expect(exported.run.source.semantic.definition.description).toBe(secondRule);
+  await page.getByRole('button', { name: '语义口径', exact: true }).click();
+  await page.getByRole('button', { name: '移除口径', exact: true }).click();
+  await expect(
+    page.getByRole('button', { name: '配置语义口径', exact: true }),
+  ).toBeVisible();
+  expect(
+    (await records(page)).find((run) => run.id === second.id).source.semantic
+      .definition.description,
+  ).toBe(secondRule);
+});
+
+test('semantic file import validates YAML, exposes saved rules and clears on a different CSV', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/');
+  await upload(page, 'semantic import');
+  await page.getByRole('button', { name: '配置语义口径', exact: true }).click();
+  const input = page.getByLabel('导入语义口径文件', { exact: true });
+  await input.setInputFiles({
+    name: 'wrong.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from('[]'),
+  });
+  await expect(page.getByRole('alert')).toContainText('对象');
+  const dialog = await page.getByRole('dialog').boundingBox();
+  expect(dialog.width).toBeLessThanOrEqual(390);
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await input.setInputFiles({
+    name: 'finance.yaml',
+    mimeType: 'application/yaml',
+    buffer: Buffer.from(
+      'description: 净销售额扣除退款\nproperties:\n  comparison: 比较自然日日均，不混用月份天数\n',
+    ),
+  });
+  await expect(page.getByLabel('口径填写方式', { exact: true })).toHaveValue(
+    'structured',
+  );
+  await page.getByRole('button', { name: '应用口径', exact: true }).click();
+  await page.getByRole('button', { name: '编辑语义口径', exact: true }).click();
+  await expect(
+    page.getByRole('textbox', { name: '语义口径内容', exact: true }),
+  ).toHaveValue(/comparison/);
+  await page.getByRole('button', { name: '关闭语义口径', exact: true }).click();
+  await upload(page, 'different CSV clears rules');
+  await expect(
+    page.getByRole('button', { name: '配置语义口径', exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole('button', { name: '编辑语义口径', exact: true })).not.toBeVisible();
+});
+
 test('Loop explores, corrects SQL and verifies results', async ({
   page,
   context,

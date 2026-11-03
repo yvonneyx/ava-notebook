@@ -1,4 +1,4 @@
-import { PanelLeft, BookOpen, Download } from 'lucide-react';
+import { PanelLeft, BookOpen, BookText, Download } from 'lucide-react';
 import type { Run } from '../../../shared/contracts';
 import { api } from '../../runtime/client';
 
@@ -7,11 +7,13 @@ export default function RunHeader({
   sidebarOpen,
   onToggleSidebar,
   onHome,
+  onSemantic,
 }: {
   run: Run;
   sidebarOpen: boolean;
   onToggleSidebar: () => void;
   onHome: () => void;
+  onSemantic: () => void;
 }) {
   return (
     <header
@@ -38,6 +40,15 @@ export default function RunHeader({
         </strong>
       </div>
       <div className="header-actions">
+        <button
+          className="text-button"
+          aria-label="语义口径"
+          onClick={onSemantic}
+          disabled={run.status === 'running'}
+        >
+          <BookText size={14} />
+          语义口径{run.source.semantic ? ' · 已配置' : ''}
+        </button>
         <button
           aria-label="导出证据"
           className="text-button"

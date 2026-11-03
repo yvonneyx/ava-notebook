@@ -6,10 +6,11 @@ import {
   ViewTransition,
 } from 'react';
 import { X } from 'lucide-react';
-import type { Run } from '../../shared/contracts';
+import type { Run, Source } from '../../shared/contracts';
 import { api, post } from '../runtime/client';
 import { useSession } from '../features/settings/useSession';
 import ModelSettingsDialog from '../features/settings/ModelSettingsDialog';
+import SemanticSettingsDialog from '../features/settings/SemanticSettingsDialog';
 import { useRunHistory } from '../features/history/useRunHistory';
 import HistorySidebar from '../features/history/HistorySidebar';
 import { useComposer } from '../features/composer/useComposer';
@@ -25,6 +26,7 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [semanticOpen, setSemanticOpen] = useState(false);
   const session = useSession();
   const history = useRunHistory();
   const composer = useComposer(setError);
@@ -89,6 +91,7 @@ export default function App() {
         sourceId: composer.source!.id,
         question: composer.question,
         strategy: composer.strategy,
+        semantic: composer.source?.semantic ?? null,
         requestId: crypto.randomUUID(),
       });
       startTransition(() => {
@@ -101,12 +104,27 @@ export default function App() {
       await history.refresh();
     });
   }
+  function applySemantic(semantic: Source['semantic']) {
+    const source = run?.source ?? composer.source;
+    if (!source) return;
+    composer.setSource({ ...source, semantic });
+    if (run) {
+      composer.setQuestion(run.question);
+      composer.setStrategy(run.strategy);
+      setRun(null);
+      setSelected('');
+      updateRunUrl();
+    }
+    setSemanticOpen(false);
+  }
   async function exploreSales() {
     const [{ default: csv }, { default: question }] = await Promise.all([
       import('../../examples/sales/sales-case.csv?raw'),
       import('../../examples/sales/sales-question.txt?raw'),
     ]);
-    await composer.upload(new File([csv], 'sales-case.csv', { type: 'text/csv' }));
+    await composer.upload(
+      new File([csv], 'sales-case.csv', { type: 'text/csv' }),
+    );
     composer.setQuestion(question.trim());
   }
   return (
@@ -128,12 +146,21 @@ export default function App() {
         />
       }
       settings={
-        <ModelSettingsDialog
-          state={session}
-          error={error}
-          busy={busy}
-          onSave={() => void act(session.save)}
-        />
+        <>
+          <ModelSettingsDialog
+            state={session}
+            error={error}
+            busy={busy}
+            onSave={() => void act(session.save)}
+          />
+          {semanticOpen && (run?.source ?? composer.source) && (
+            <SemanticSettingsDialog
+              source={(run?.source ?? composer.source)!}
+              onApply={applySemantic}
+              onClose={() => setSemanticOpen(false)}
+            />
+          )}
+        </>
       }
     >
       {run && (
@@ -142,6 +169,7 @@ export default function App() {
           sidebarOpen={sidebarOpen}
           onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
           onHome={newAnalysis}
+          onSemantic={() => setSemanticOpen(true)}
         />
       )}
       {error && (
@@ -185,6 +213,7 @@ export default function App() {
                 onUpload={(file) => void act(() => composer.upload(file))}
                 onStart={startAnalysis}
                 onSettings={() => session.setOpen(true)}
+                onSemantic={() => setSemanticOpen(true)}
               />
             }
           />

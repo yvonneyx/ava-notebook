@@ -5,6 +5,8 @@ import {
   X,
   ChevronDown,
   LoaderCircle,
+  BookText,
+  Check,
   ArrowRight,
 } from 'lucide-react';
 import type { Run, Session } from '../../../shared/contracts';
@@ -18,6 +20,7 @@ export default function Composer({
   onUpload,
   onStart,
   onSettings,
+  onSemantic,
 }: {
   composer: ReturnType<typeof useComposer>;
   session: Session | null;
@@ -25,6 +28,7 @@ export default function Composer({
   onUpload: (file: File) => void;
   onStart: () => void;
   onSettings: () => void;
+  onSemantic: () => void;
 }) {
   const { source, setSource, question, setQuestion, strategy, setStrategy } =
     composer;
@@ -76,16 +80,29 @@ export default function Composer({
                   <p>
                     {source.rows.toLocaleString()} 行 · {source.headers.length}{' '}
                     个字段 · {(source.bytes / 1024).toFixed(1)} KB
-                    {source.semantic && (
-                      <span
-                        className="semantic-badge"
-                        title={source.semantic.name}
-                      >
-                        已加载业务语义
-                      </span>
-                    )}
                   </p>
                 </div>
+                <button
+                  className={`semantic-entry ${
+                    source.semantic ? 'configured' : ''
+                  }`}
+                  type="button"
+                  aria-label={source.semantic ? '编辑语义口径' : '配置语义口径'}
+                  title={
+                    source.semantic
+                      ? `已配置：${source.semantic.name}`
+                      : '配置语义口径'
+                  }
+                  disabled={busy}
+                  onClick={onSemantic}
+                >
+                  {source.semantic ? (
+                    <Check size={14} />
+                  ) : (
+                    <BookText size={14} />
+                  )}
+                  口径
+                </button>
                 <button
                   className="icon-button"
                   aria-label={`移除文件 ${source.name}`}

@@ -44,3 +44,62 @@
 .settings-dialog[open]::backdrop {
   animation: backdrop-in 180ms ease-out;
 }
+
+.semantic-dialog {
+  width: 640px;
+  max-height: calc(100dvh - 40px);
+  overflow-y: auto;
+}
+.semantic-source {
+  font-size: 11px;
+  color: var(--muted);
+  margin: 12px 0;
+  overflow-wrap: anywhere;
+}
+.semantic-options {
+  display: flex;
+  gap: 16px;
+  align-items: end;
+  justify-content: space-between;
+  margin: 14px 0;
+}
+.semantic-options .field {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  min-width: 170px;
+}
+.semantic-options select {
+  font: inherit;
+  color: inherit;
+  border: 1px solid var(--border);
+  background: #fff;
+  border-radius: 10px;
+  padding: 8px 10px;
+  min-height: 36px;
+}
+.semantic-dialog textarea {
+  resize: vertical;
+  min-height: 180px;
+  line-height: 1.7;
+  font-size: 12px;
+  font-family: inherit;
+}
+.semantic-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  align-items: center;
+}
+.semantic-actions > .text-button {
+  margin-right: auto;
+}
+@media (max-width: 560px) {
+  .semantic-dialog {
+    padding: 20px;
+  }
+  .semantic-options {
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+}

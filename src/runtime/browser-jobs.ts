@@ -1,5 +1,6 @@
 import type { Evidence, Run, Source } from '../../shared/contracts';
 import type { RunObserver } from './client';
+import { createSemantic } from '../domain/semantic';
 import {
   applyEvent,
   completeRun,
@@ -198,10 +199,14 @@ export async function startBrowserRun(body: any, llm: Credentials) {
     body.sourceId,
   );
   if (!stored) throw new Error('未找到 CSV，请重新导入');
+  const semantic =
+    body.semantic == null
+      ? undefined
+      : await createSemantic(body.semantic.name, body.semantic.definition);
   const run: StoredRun = {
     id: body.requestId,
     question,
-    source: stored.source,
+    source: { ...stored.source, semantic },
     strategy: body.strategy,
     model: llm.model,
     build: 'browser-duckdb-wasm',
@@ -325,6 +330,7 @@ export async function startBrowserRun(body: any, llm: Credentials) {
   };
   worker.postMessage({
     file: stored.file,
+    semantic: run.source.semantic?.definition,
     question,
     strategy: run.strategy,
     llm,

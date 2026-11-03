@@ -209,8 +209,25 @@
   }
 }
 
-.semantic-badge {
-  display: inline-block;
-  margin-left: 8px;
+.semantic-entry {
+  display: inline-flex;
+  flex-shrink: 0;
+  gap: 5px;
+  align-items: center;
+  padding: 5px 8px;
+  min-height: 28px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font-size: 11px;
+  color: #5e6e79;
+  background: #ffffff80;
+}
+.semantic-entry.configured {
   color: #518b77;
+  background: #ffffff;
+  border-color: #dcebe5;
+}
+.semantic-entry:hover:not(:disabled) {
+  background: #fff;
+  border-color: #c9dfec;
 }
